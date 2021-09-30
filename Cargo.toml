@@ -1,5 +1,5 @@
 [package]
-name = "settings-loader-rs"
+name = "settings_loader"
 version = "0.1.0"
 edition = "2018"
 
@@ -10,6 +10,7 @@ database = ["sqlx"]
 http = []
 
 [dependencies]
+anyhow = "1.0"
 config = { git = "https://github.com/dmrolfs/config-rs"}
 enum-display-derive = "0.1"
 serde = { version = "1.0", features = ["derive"] }

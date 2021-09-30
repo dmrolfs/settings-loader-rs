@@ -1,4 +1,4 @@
-use crate::{Environment, LoadingOptions, SettingsError};
+use crate::{Environment, LoadingOptions, OptionOverrides, SettingsError};
 use config::builder::DefaultState;
 use config::ConfigBuilder;
 use serde::de::DeserializeOwned;
@@ -7,7 +7,7 @@ use std::fmt::Debug;
 use std::path::PathBuf;
 
 pub trait SettingsLoader: Debug + Sized {
-    type Options: LoadingOptions;
+    type Options: LoadingOptions + OptionOverrides;
 
     fn env_app_environment() -> &'static str {
         "APP_ENVIRONMENT"
@@ -36,6 +36,9 @@ pub trait SettingsLoader: Debug + Sized {
         config_builder = Self::load_configuration(config_builder, options.config_path())?;
         config_builder = Self::load_secrets(config_builder, options.secrets_path());
         config_builder = Self::load_environment(config_builder);
+        config_builder = options
+            .load_overrides(config_builder)
+            .map_err(|err| SettingsError::CliOptionError(err.into()))?;
         let config = config_builder.build()?;
         tracing::info!(?config, "configuration loaded");
         let settings = config.try_into()?;

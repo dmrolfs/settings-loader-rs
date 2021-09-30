@@ -12,6 +12,9 @@ pub enum SettingsError {
     #[error(transparent)]
     Configuration(#[from] config::ConfigError),
 
+    #[error("failed to load option overrides into settings: {0}")]
+    CliOptionError(#[from] anyhow::Error),
+
     #[error("{0}")]
     IOError(#[from] std::io::Error),
 
