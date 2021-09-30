@@ -14,27 +14,23 @@ pub mod error;
 pub mod settings_loader;
 mod tracing;
 
-pub trait LoadingOptions {
+pub trait LoadingOptions: Sized {
     type Error: std::error::Error + Sync + Send + 'static;
     fn config_path(&self) -> Option<PathBuf>;
     fn secrets_path(&self) -> Option<PathBuf>;
-    fn load_overrides(self, config: ConfigBuilder<DefaultState>) -> Result<ConfigBuilder<DefaultState>, Self::Error>;
+    fn load_overrides(self, config: ConfigBuilder<DefaultState>) -> Result<ConfigBuilder<DefaultState>, Self::Error> {
+        Ok(config)
+    }
 }
 
 pub type NoOptions = ();
 
 impl LoadingOptions for () {
     type Error = SettingsError;
-
     fn config_path(&self) -> Option<PathBuf> {
         None
     }
-
     fn secrets_path(&self) -> Option<PathBuf> {
         None
-    }
-
-    fn load_overrides(self, config: ConfigBuilder<DefaultState>) -> Result<ConfigBuilder<DefaultState>, Self::Error> {
-        Ok(config)
     }
 }
