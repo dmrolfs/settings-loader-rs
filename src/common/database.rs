@@ -5,7 +5,7 @@ use sqlx::postgres::{PgConnectOptions, PgSslMode};
 use std::fmt;
 
 #[serde_as]
-#[derive(Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DatabaseSettings {
     pub username: String,
     pub password: String,

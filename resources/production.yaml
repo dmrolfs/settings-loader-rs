@@ -1,0 +1,10 @@
+application:
+#  host: 127.0.0.1
+  host: 0.0.0.0
+database:
+  username: "postgres"
+  password: "password"
+#database:
+#  host: postgres_1632546102
+#  require_ssl: true
+foo: without_options

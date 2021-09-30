@@ -6,20 +6,35 @@ use config::builder::DefaultState;
 use config::ConfigBuilder;
 pub use environment::Environment;
 pub use error::SettingsError;
-use std::fmt::Debug;
 use std::path::PathBuf;
 
 pub mod common;
 pub mod environment;
 pub mod error;
 pub mod settings_loader;
+mod tracing;
 
-pub trait LoadingOptions: Debug {
+pub trait LoadingOptions {
+    type Error: std::error::Error + Sync + Send + 'static;
     fn config_path(&self) -> Option<PathBuf>;
     fn secrets_path(&self) -> Option<PathBuf>;
+    fn load_overrides(self, config: ConfigBuilder<DefaultState>) -> Result<ConfigBuilder<DefaultState>, Self::Error>;
 }
 
-pub trait OptionOverrides {
-    type Error: std::error::Error + Sync + Send + 'static;
-    fn load_overrides(self, config: ConfigBuilder<DefaultState>) -> Result<ConfigBuilder<DefaultState>, Self::Error>;
+pub type NoOptions = ();
+
+impl LoadingOptions for () {
+    type Error = SettingsError;
+
+    fn config_path(&self) -> Option<PathBuf> {
+        None
+    }
+
+    fn secrets_path(&self) -> Option<PathBuf> {
+        None
+    }
+
+    fn load_overrides(self, config: ConfigBuilder<DefaultState>) -> Result<ConfigBuilder<DefaultState>, Self::Error> {
+        Ok(config)
+    }
 }
