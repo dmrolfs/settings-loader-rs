@@ -3,7 +3,7 @@ use tracing::{subscriber::set_global_default, Subscriber};
 use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
 use tracing_log::LogTracer;
 use tracing_subscriber::fmt::MakeWriter;
-use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Registry};
+use tracing_subscriber::{EnvFilter, layer::SubscriberExt, Registry};
 
 pub static TEST_TRACING: Lazy<()> = Lazy::new(|| {
     let default_filter_level = "info";
@@ -17,9 +17,12 @@ pub static TEST_TRACING: Lazy<()> = Lazy::new(|| {
     };
 });
 
-pub fn get_subscriber(
-    name: impl Into<String>, env_filter: impl AsRef<str>, sink: impl MakeWriter + Send + Sync + 'static,
-) -> impl Subscriber + Sync + Send {
+pub fn get_subscriber<S0, S1, W>(name: S0, env_filter: S1, sink: W) -> impl Subscriber + Sync + Send
+where
+    S0: Into<String>,
+    S1: AsRef<str>,
+    W: for<'a> MakeWriter<'a> + Send + Sync + 'static,
+{
     let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(env_filter));
 
     let formatting_layer = BunyanFormattingLayer::new(name.into(), sink);
