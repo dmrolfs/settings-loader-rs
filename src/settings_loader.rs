@@ -34,22 +34,87 @@ pub trait SettingsLoader: Debug + Sized {
         Self: DeserializeOwned,
     {
         tracing::info!(?options, "loading common based on CLI options.");
-        let mut config_builder = config::Config::builder();
-        config_builder = Self::load_configuration(config_builder, options.config_path())?;
-        config_builder = Self::load_secrets(config_builder, options.secrets_path());
-        config_builder = Self::load_environment(config_builder);
-        config_builder = options
-            .load_overrides(config_builder)
+        let resources = std::env::current_dir()?.join(Self::resources_dir());
+
+        let mut builder = config::Config::builder();
+        match options.config_path() {
+            Some(ref path) => {
+                builder = builder.add_source(Self::make_explicit_config_source(path));
+            }
+            None => {
+                builder = builder.add_source(Self::make_implicit_app_config_sources(
+                    Self::app_config_basename(),
+                    &resources,
+                ));
+                match std::env::var(Self::env_app_environment()) {
+                    Ok(env_rep) => {
+                        let environment: Environment = env_rep.try_into()?;
+                        builder = builder.add_source(Self::make_app_environment_source(environment, &resources));
+                    }
+                    Err(std::env::VarError::NotPresent) => {
+                        tracing::warn!(
+                            "no environment variable override on common specified at env var, {}",
+                            Self::env_app_environment()
+                        );
+                    }
+                    Err(err) => return Err(err.into()),
+                }
+            }
+        }
+
+        if let Some(ref secrets) = options.secrets_path() {
+            builder = builder.add_source(Self::make_secrets_source(secrets));
+        }
+
+        builder = builder.add_source(Self::make_environment_variables_source());
+
+        builder = options
+            .load_overrides(builder)
             .map_err(|err| SettingsError::CliOptionError(err.into()))?;
-        let config = config_builder.build()?;
+
+        let config = builder.build()?;
         tracing::info!(?config, "configuration loaded");
         let settings = config.try_into()?;
         tracing::info!(?settings, "common built for application.");
         Ok(settings)
     }
 
+    fn make_explicit_config_source(path: &PathBuf) -> config::File<config::FileSourceFile> {
+        config::File::from(path.as_path()).required(true)
+    }
+
+    fn make_implicit_app_config_sources(basename: &str, resources: &PathBuf) -> config::File<config::FileSourceFile> {
+        tracing::debug!("looking for {} config in: {:?}", basename, resources);
+        let path = resources.join(basename);
+        config::File::from(path).required(true)
+    }
+
+    fn make_app_environment_source(
+        environment: Environment, resources: &PathBuf,
+    ) -> config::File<config::FileSourceFile> {
+        tracing::debug!("looking for {} config at {:?}", environment, resources);
+        let env_path = resources.join(environment.as_ref());
+        config::File::from(env_path).required(false)
+    }
+
+    fn make_secrets_source(secrets_path: &PathBuf) -> config::File<config::FileSourceFile> {
+        if secrets_path.as_path().exists() {
+            tracing::info!("adding secrets override configuration source from {:?}", secrets_path);
+        } else {
+            tracing::error!("cannot find secrets override configuration at {:?}", secrets_path);
+        }
+        config::File::from(secrets_path.as_path()).required(true)
+    }
+
+    fn make_environment_variables_source() -> config::Environment {
+        let config_env =
+            config::Environment::with_prefix(Self::environment_prefix()).separator(Self::environment_path_separator());
+        tracing::info!("loading environment variables with: {:?}", config_env);
+        config_env
+    }
+
     #[tracing::instrument(level = "info", skip(config,))]
-    fn load_configuration(
+    fn add_configuration_source(
         config: ConfigBuilder<DefaultState>, specific_config_path: Option<PathBuf>,
     ) -> Result<ConfigBuilder<DefaultState>, SettingsError> {
         match specific_config_path {
@@ -66,18 +131,13 @@ pub trait SettingsLoader: Debug + Sized {
                     Self::app_config_basename(),
                     resources_path
                 );
-                let config =
-                    config.add_source(config::File::with_name(config_path.to_string_lossy().as_ref()).required(true));
+                let config = config.add_source(config::File::from(config_path).required(true));
+                // config.add_source(config::File::with_name(config_path.to_string_lossy().as_ref()).required(true));
 
                 match std::env::var(Self::env_app_environment()) {
                     Ok(rep) => {
                         let environment: Environment = rep.try_into()?;
-                        let env_config_path = resources_path.join(environment.as_ref());
-                        tracing::debug!("looking for {} config in: {:?}", environment, resources_path);
-                        let config = config.add_source(
-                            config::File::with_name(env_config_path.to_string_lossy().as_ref()).required(true),
-                        );
-                        Ok(config)
+                        Ok(Self::add_app_environment_source(config, environment, &resources_path))
                     }
 
                     Err(std::env::VarError::NotPresent) => {
@@ -95,7 +155,18 @@ pub trait SettingsLoader: Debug + Sized {
     }
 
     #[tracing::instrument(level = "info", skip(config))]
-    fn load_secrets(config: ConfigBuilder<DefaultState>, secrets_path: Option<PathBuf>) -> ConfigBuilder<DefaultState> {
+    fn add_app_environment_source(
+        config: ConfigBuilder<DefaultState>, env: Environment, resources_path: &PathBuf,
+    ) -> ConfigBuilder<DefaultState> {
+        let env_config_path = resources_path.join(env.as_ref());
+        tracing::debug!("looking for {} configu at {:?}", env, resources_path);
+        config.add_source(config::File::from(env_config_path).required(false))
+    }
+
+    #[tracing::instrument(level = "info", skip(config))]
+    fn add_secrets_source(
+        config: ConfigBuilder<DefaultState>, secrets_path: Option<PathBuf>,
+    ) -> ConfigBuilder<DefaultState> {
         if let Some(path) = secrets_path {
             tracing::debug!(
                 "looking for secrets configuration at: {:?} -- exists:{}",
@@ -114,10 +185,10 @@ pub trait SettingsLoader: Debug + Sized {
     }
 
     #[tracing::instrument(level = "info", skip(config))]
-    fn load_environment(config: ConfigBuilder<DefaultState>) -> ConfigBuilder<DefaultState> {
+    fn add_environment_variables_source(config: ConfigBuilder<DefaultState>) -> ConfigBuilder<DefaultState> {
         let config_env =
             config::Environment::with_prefix(Self::environment_prefix()).separator(Self::environment_path_separator());
-        tracing::info!("loading environment properties with prefix: {:?}", config_env);
+        tracing::info!("loading environment variables with prefix: {:?}", config_env);
         config.add_source(config_env)
     }
 }
@@ -204,7 +275,7 @@ mod tests {
             vec![(APP_ENVIRONMENT, Some("local"))],
             || {
                 eprintln!("+ test_load_string_settings");
-                lazy_static::initialize(&crate::tracing::TEST_TRACING);
+                Lazy::force(&TEST_TRACING);
                 let main_span = tracing::info_span!("test_load_string_settings");
                 let _ = main_span.enter();
 
@@ -267,7 +338,7 @@ database:
             vec![(APP_ENVIRONMENT, Some("local"))],
             || {
                 eprintln!("+ test_settings_load_w_options");
-                lazy_static::initialize(&crate::tracing::TEST_TRACING);
+                Lazy::force(&TEST_TRACING);
                 let main_span = tracing::info_span!("test_settings_load_w_options");
                 let _ = main_span.enter();
 
@@ -303,7 +374,7 @@ database:
     #[test]
     fn test_settings_load_w_no_options() -> anyhow::Result<()> {
         eprintln!("+ test_settings_load_w_no_options");
-        lazy_static::initialize(&crate::tracing::TEST_TRACING);
+        Lazy::force(&TEST_TRACING);
         let main_span = tracing::info_span!("test_settings_load_w_no_options");
         let _ = main_span.enter();
 
@@ -340,15 +411,14 @@ database:
         Ok(())
     }
 
-    use lazy_static::lazy_static;
+    use crate::tracing::TEST_TRACING;
+    use once_cell::sync::Lazy;
     use std::env::VarError;
     use std::panic::{RefUnwindSafe, UnwindSafe};
     use std::sync::Mutex;
     use std::{env, panic};
 
-    lazy_static! {
-        static ref SERIAL_TEST: Mutex<()> = Default::default();
-    }
+    static SERIAL_TEST: Lazy<Mutex<()>> = Lazy::new(|| Default::default());
 
     /// Sets environment variables to the given value for the duration of the closure.
     /// Restores the previous values when the closure completes or panics, before unwinding the panic.

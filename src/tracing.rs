@@ -1,16 +1,21 @@
+use once_cell::sync::Lazy;
 use tracing::{subscriber::set_global_default, Subscriber};
 use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
 use tracing_log::LogTracer;
 use tracing_subscriber::fmt::MakeWriter;
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Registry};
 
-lazy_static::lazy_static! {
-    pub static ref TEST_TRACING: () = {
-        let filter = if std::env::var("TEST_LOG").is_ok() { "debug" } else { "" };
-        let subscriber = get_subscriber("test", filter, std::io::stdout);
+pub static TEST_TRACING: Lazy<()> = Lazy::new(|| {
+    let default_filter_level = "info";
+    let subscriber_name = "test";
+    if std::env::var("TEST_LOG").is_ok() {
+        let subscriber = get_subscriber(subscriber_name, default_filter_level, std::io::stdout);
+        init_subscriber(subscriber);
+    } else {
+        let subscriber = get_subscriber(subscriber_name, default_filter_level, std::io::sink);
         init_subscriber(subscriber);
     };
-}
+});
 
 pub fn get_subscriber(
     name: impl Into<String>, env_filter: impl AsRef<str>, sink: impl MakeWriter + Send + Sync + 'static,

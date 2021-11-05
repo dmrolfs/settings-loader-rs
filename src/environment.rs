@@ -1,8 +1,10 @@
 use crate::SettingsError;
+use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 use std::fmt::Display;
 
-#[derive(Debug, Display, PartialEq)]
+#[derive(Debug, Copy, Clone, Display, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Environment {
     Local,
     Production,
