@@ -24,7 +24,7 @@ pub trait LoadingOptions: Sized {
     fn environment_override(&self) -> Option<Environment> {
         None
     }
-    fn load_overrides(self, config: ConfigBuilder<DefaultState>) -> Result<ConfigBuilder<DefaultState>, Self::Error> {
+    fn load_overrides(&self, config: ConfigBuilder<DefaultState>) -> Result<ConfigBuilder<DefaultState>, Self::Error> {
         Ok(config)
     }
 }

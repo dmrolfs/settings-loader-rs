@@ -29,7 +29,7 @@ pub trait SettingsLoader: Debug + Sized {
     }
 
     #[tracing::instrument(level = "info")]
-    fn load(options: Self::Options) -> Result<Self, SettingsError>
+    fn load(options: &Self::Options) -> Result<Self, SettingsError>
     where
         Self: DeserializeOwned,
     {
@@ -233,9 +233,9 @@ mod tests {
 
         #[tracing::instrument(level = "info", skip(config))]
         fn load_overrides(
-            self, config: ConfigBuilder<DefaultState>,
+            &self, config: ConfigBuilder<DefaultState>,
         ) -> Result<ConfigBuilder<DefaultState>, Self::Error> {
-            Ok(config.set_override("foo", self.0)?)
+            Ok(config.set_override("foo", self.0.as_str())?)
         }
     }
 
@@ -361,7 +361,7 @@ mod tests {
                 assert_eq!(assert_ok!(std::env::var(APP_ENVIRONMENT)), "local");
                 tracing::info!("envar: {} = {:?}", APP_ENVIRONMENT, std::env::var(APP_ENVIRONMENT));
 
-                let actual = assert_ok!(TestSettings::load(TestOptions("zed".to_string(), None)));
+                let actual = assert_ok!(TestSettings::load(&TestOptions("zed".to_string(), None)));
 
                 let expected: TestSettings = TestSettings {
                     application: TestHttpSettings {
@@ -401,7 +401,7 @@ mod tests {
                 assert_eq!(assert_ok!(std::env::var(APP_ENVIRONMENT)), "production");
                 tracing::info!("envar: {} = {:?}", APP_ENVIRONMENT, std::env::var(APP_ENVIRONMENT));
 
-                let actual = assert_ok!(TestSettingsNoOpts::load(()));
+                let actual = assert_ok!(TestSettingsNoOpts::load(&()));
 
                 let expected = TestSettingsNoOpts {
                     application: TestHttpSettings {
