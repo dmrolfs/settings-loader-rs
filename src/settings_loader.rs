@@ -14,7 +14,7 @@ pub trait SettingsLoader: Debug + Sized {
     fn env_app_environment() -> &'static str {
         APP_ENVIRONMENT
     }
-    fn resources_dir() -> PathBuf {
+    fn resources() -> PathBuf {
         PathBuf::from("resources")
     }
     fn app_config_basename() -> &'static str {
@@ -34,7 +34,9 @@ pub trait SettingsLoader: Debug + Sized {
         Self: DeserializeOwned,
     {
         tracing::info!(?options, "loading common based on CLI options.");
-        let resources = std::env::current_dir()?.join(Self::resources_dir());
+        let resources = options
+            .resources_path()
+            .unwrap_or(std::env::current_dir()?.join(Self::resources()));
 
         let mut builder = config::Config::builder();
         match options.config_path() {
@@ -124,7 +126,7 @@ pub trait SettingsLoader: Debug + Sized {
             }
 
             None => {
-                let resources_path = std::env::current_dir()?.join(Self::resources_dir());
+                let resources_path = std::env::current_dir()?.join(Self::resources());
                 let config_path = resources_path.join(Self::app_config_basename());
                 tracing::debug!(
                     "looking for {} config in: {:?}",
@@ -211,6 +213,10 @@ mod tests {
         type Error = SettingsError;
 
         fn config_path(&self) -> Option<PathBuf> {
+            None
+        }
+
+        fn resources_path(&self) -> Option<PathBuf> {
             None
         }
 
