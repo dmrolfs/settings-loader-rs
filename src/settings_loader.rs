@@ -48,18 +48,25 @@ pub trait SettingsLoader: Debug + Sized {
                     Self::app_config_basename(),
                     &resources,
                 ));
-                match std::env::var(Self::env_app_environment()) {
-                    Ok(env_rep) => {
-                        let environment: Environment = env_rep.try_into()?;
-                        builder = builder.add_source(Self::make_app_environment_source(environment, &resources));
-                    }
-                    Err(std::env::VarError::NotPresent) => {
-                        tracing::warn!(
-                            "no environment variable override on common specified at env var, {}",
-                            Self::env_app_environment()
-                        );
-                    }
-                    Err(err) => return Err(err.into()),
+
+                let environment = options
+                    .environment_override()
+                    .map(|e| Ok(e))
+                    .or_else(|| match std::env::var(Self::env_app_environment()) {
+                        Ok(env_rep) => Some(env_rep.try_into()),
+                        Err(std::env::VarError::NotPresent) => {
+                            tracing::warn!(
+                                "no environment variable override on common specified at env var, {}",
+                                Self::env_app_environment()
+                            );
+                            None
+                        }
+                        Err(err) => Some(Err(err.into())),
+                    })
+                    .transpose()?;
+
+                if let Some(env) = environment {
+                    builder = builder.add_source(Self::make_app_environment_source(env, &resources));
                 }
             }
         }
@@ -197,7 +204,7 @@ pub trait SettingsLoader: Debug + Sized {
 
 #[cfg(test)]
 mod tests {
-    use claim::assert_ok;
+    use claim::{assert_err, assert_ok};
     use config::{Config, FileFormat};
     use pretty_assertions::assert_eq;
 
@@ -207,7 +214,7 @@ mod tests {
     use serde_with::{serde_as, DisplayFromStr};
 
     #[derive(Debug, PartialEq, Eq)]
-    struct TestOptions(String);
+    struct TestOptions(String, Option<Environment>);
 
     impl LoadingOptions for TestOptions {
         type Error = SettingsError;
@@ -216,12 +223,12 @@ mod tests {
             None
         }
 
-        fn resources_path(&self) -> Option<PathBuf> {
-            None
-        }
-
         fn secrets_path(&self) -> Option<PathBuf> {
             Some(PathBuf::from("./resources/secrets.yaml"))
+        }
+
+        fn environment_override(&self) -> Option<Environment> {
+            self.1
         }
 
         #[tracing::instrument(level = "info", skip(config))]
@@ -278,34 +285,37 @@ mod tests {
     fn test_load_string_settings() -> anyhow::Result<()> {
         with_env_vars(
             "test_load_string_settings",
-            vec![(APP_ENVIRONMENT, Some("local"))],
+            vec![(APP_ENVIRONMENT, None)], //Some("local"))],
             || {
                 eprintln!("+ test_load_string_settings");
                 Lazy::force(&TEST_TRACING);
                 let main_span = tracing::info_span!("test_load_string_settings");
                 let _ = main_span.enter();
 
-                assert_eq!(assert_ok!(std::env::var(APP_ENVIRONMENT)), "local");
+                assert_err!(std::env::var(APP_ENVIRONMENT));
                 tracing::info!("envar: {} = {:?}", APP_ENVIRONMENT, std::env::var(APP_ENVIRONMENT));
 
                 let config = Config::builder().add_source(config::File::from_str(
                     r###"
-application:
-  port: 8000
-  host: 10.1.2.57
-  base_url: "http://10.1.2.57"
-database:
-  username: postgres
-  password: password
-  port: 5432
-  host: "localhost"
-  database_name: "propensity"
-  require_ssl: true
-                "###,
+                    | application:
+                    |   port: 8000
+                    |   host: 10.1.2.57
+                    |   base_url: "http://10.1.2.57"
+                    | database:
+                    |   username: postgres
+                    |   password: password
+                    |   port: 5432
+                    |   host: "localhost"
+                    |   database_name: "propensity"
+                    |   require_ssl: true
+                "###
+                    .trim_margin_with("| ")
+                    .unwrap()
+                    .as_str(),
                     FileFormat::Yaml,
                 ));
 
-                let options = TestOptions("bar".to_string());
+                let options = TestOptions("bar".to_string(), Some(Environment::Local));
                 let config = assert_ok!(options.load_overrides(config));
 
                 let config = assert_ok!(config.build());
@@ -351,7 +361,7 @@ database:
                 assert_eq!(assert_ok!(std::env::var(APP_ENVIRONMENT)), "local");
                 tracing::info!("envar: {} = {:?}", APP_ENVIRONMENT, std::env::var(APP_ENVIRONMENT));
 
-                let actual = assert_ok!(TestSettings::load(TestOptions("zed".to_string())));
+                let actual = assert_ok!(TestSettings::load(TestOptions("zed".to_string(), None)));
 
                 let expected: TestSettings = TestSettings {
                     application: TestHttpSettings {
@@ -423,6 +433,7 @@ database:
     use std::panic::{RefUnwindSafe, UnwindSafe};
     use std::sync::Mutex;
     use std::{env, panic};
+    use trim_margin::MarginTrimmable;
 
     static SERIAL_TEST: Lazy<Mutex<()>> = Lazy::new(|| Default::default());
 

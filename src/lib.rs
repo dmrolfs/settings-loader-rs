@@ -17,8 +17,13 @@ mod tracing;
 pub trait LoadingOptions: Sized {
     type Error: std::error::Error + Sync + Send + 'static;
     fn config_path(&self) -> Option<PathBuf>;
-    fn resources_path(&self) -> Option<PathBuf>;
     fn secrets_path(&self) -> Option<PathBuf>;
+    fn resources_path(&self) -> Option<PathBuf> {
+        None
+    }
+    fn environment_override(&self) -> Option<Environment> {
+        None
+    }
     fn load_overrides(self, config: ConfigBuilder<DefaultState>) -> Result<ConfigBuilder<DefaultState>, Self::Error> {
         Ok(config)
     }
@@ -30,10 +35,6 @@ impl LoadingOptions for () {
     type Error = SettingsError;
 
     fn config_path(&self) -> Option<PathBuf> {
-        None
-    }
-
-    fn resources_path(&self) -> Option<PathBuf> {
         None
     }
 
