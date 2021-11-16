@@ -1,19 +1,15 @@
-use crate::{Environment, LoadingOptions, SettingsError};
-use config::builder::DefaultState;
-use config::ConfigBuilder;
-use serde::de::DeserializeOwned;
-use std::convert::TryInto;
 use std::fmt::Debug;
 use std::path::PathBuf;
 
-const APP_ENVIRONMENT: &'static str = "APP_ENVIRONMENT";
+use config::builder::DefaultState;
+use config::ConfigBuilder;
+use serde::de::DeserializeOwned;
+
+use crate::{Environment, LoadingOptions, SettingsError};
 
 pub trait SettingsLoader: Debug + Sized {
     type Options: LoadingOptions + Debug;
 
-    fn env_app_environment() -> &'static str {
-        APP_ENVIRONMENT
-    }
     fn resources() -> PathBuf {
         PathBuf::from("resources")
     }
@@ -42,33 +38,17 @@ pub trait SettingsLoader: Debug + Sized {
         match options.config_path() {
             Some(ref path) => {
                 builder = builder.add_source(Self::make_explicit_config_source(path));
-            }
+            },
             None => {
                 builder = builder.add_source(Self::make_implicit_app_config_sources(
                     Self::app_config_basename(),
                     &resources,
                 ));
 
-                let environment = options
-                    .environment_override()
-                    .map(|e| Ok(e))
-                    .or_else(|| match std::env::var(Self::env_app_environment()) {
-                        Ok(env_rep) => Some(env_rep.try_into()),
-                        Err(std::env::VarError::NotPresent) => {
-                            tracing::warn!(
-                                "no environment variable override on common specified at env var, {}",
-                                Self::env_app_environment()
-                            );
-                            None
-                        }
-                        Err(err) => Some(Err(err.into())),
-                    })
-                    .transpose()?;
-
-                if let Some(env) = environment {
+                if let Some(env) = options.environment() {
                     builder = builder.add_source(Self::make_app_environment_source(env, &resources));
                 }
-            }
+            },
         }
 
         if let Some(ref secrets) = options.secrets_path() {
@@ -122,46 +102,45 @@ pub trait SettingsLoader: Debug + Sized {
         config_env
     }
 
-    #[tracing::instrument(level = "info", skip(config,))]
-    fn add_configuration_source(
-        config: ConfigBuilder<DefaultState>, specific_config_path: Option<PathBuf>,
-    ) -> Result<ConfigBuilder<DefaultState>, SettingsError> {
-        match specific_config_path {
-            Some(explicit_path) => {
-                let config = config.add_source(config::File::from(explicit_path).required(true));
-                Ok(config)
-            }
-
-            None => {
-                let resources_path = std::env::current_dir()?.join(Self::resources());
-                let config_path = resources_path.join(Self::app_config_basename());
-                tracing::debug!(
-                    "looking for {} config in: {:?}",
-                    Self::app_config_basename(),
-                    resources_path
-                );
-                let config = config.add_source(config::File::from(config_path).required(true));
-                // config.add_source(config::File::with_name(config_path.to_string_lossy().as_ref()).required(true));
-
-                match std::env::var(Self::env_app_environment()) {
-                    Ok(rep) => {
-                        let environment: Environment = rep.try_into()?;
-                        Ok(Self::add_app_environment_source(config, environment, &resources_path))
-                    }
-
-                    Err(std::env::VarError::NotPresent) => {
-                        tracing::warn!(
-                            "no environment variable override on common specified at env var, {}",
-                            Self::env_app_environment()
-                        );
-                        Ok(config)
-                    }
-
-                    Err(err) => Err(err.into()),
-                }
-            }
-        }
-    }
+    // #[tracing::instrument(level = "info", skip(config,))]
+    // fn add_configuration_source(
+    //     config: ConfigBuilder<DefaultState>, specific_config_path: Option<PathBuf>,
+    // ) -> Result<ConfigBuilder<DefaultState>, SettingsError> {
+    //     match specific_config_path {
+    //         Some(explicit_path) => {
+    //             let config = config.add_source(config::File::from(explicit_path).required(true));
+    //             Ok(config)
+    //         }
+    //
+    //         None => {
+    //             let resources_path = std::env::current_dir()?.join(Self::resources());
+    //             let config_path = resources_path.join(Self::app_config_basename());
+    //             tracing::debug!(
+    //                 "looking for {} config in: {:?}",
+    //                 Self::app_config_basename(),
+    //                 resources_path
+    //             );
+    //             let config = config.add_source(config::File::from(config_path).required(true));
+    //
+    //             match std::env::var(CliOptions::env_app_environment()) {
+    //                 Ok(rep) => {
+    //                     let environment: Environment = rep.try_into()?;
+    //                     Ok(Self::add_app_environment_source(config, environment, &resources_path))
+    //                 }
+    //
+    //                 Err(std::env::VarError::NotPresent) => {
+    //                     tracing::warn!(
+    //                         "no environment variable override on common specified at env var, {}",
+    //                         Self::env_app_environment()
+    //                     );
+    //                     Ok(config)
+    //                 }
+    //
+    //                 Err(err) => Err(err.into()),
+    //             }
+    //         }
+    //     }
+    // }
 
     #[tracing::instrument(level = "info", skip(config))]
     fn add_app_environment_source(
@@ -207,11 +186,11 @@ mod tests {
     use claim::{assert_err, assert_ok};
     use config::{Config, FileFormat};
     use pretty_assertions::assert_eq;
-
-    use super::*;
-    use crate::NoOptions;
     use serde::{Deserialize, Serialize};
     use serde_with::{serde_as, DisplayFromStr};
+
+    use super::*;
+    use crate::{NoOptions, APP_ENVIRONMENT};
 
     #[derive(Debug, PartialEq, Eq)]
     struct TestOptions(String, Option<Environment>);
@@ -285,7 +264,7 @@ mod tests {
     fn test_load_string_settings() -> anyhow::Result<()> {
         with_env_vars(
             "test_load_string_settings",
-            vec![(APP_ENVIRONMENT, None)], //Some("local"))],
+            vec![(APP_ENVIRONMENT, None)], // Some("local"))],
             || {
                 eprintln!("+ test_load_string_settings");
                 Lazy::force(&TEST_TRACING);
@@ -427,18 +406,21 @@ mod tests {
         Ok(())
     }
 
-    use crate::tracing::TEST_TRACING;
-    use once_cell::sync::Lazy;
     use std::env::VarError;
     use std::panic::{RefUnwindSafe, UnwindSafe};
     use std::sync::Mutex;
     use std::{env, panic};
+
+    use once_cell::sync::Lazy;
     use trim_margin::MarginTrimmable;
+
+    use crate::tracing::TEST_TRACING;
 
     static SERIAL_TEST: Lazy<Mutex<()>> = Lazy::new(|| Default::default());
 
     /// Sets environment variables to the given value for the duration of the closure.
-    /// Restores the previous values when the closure completes or panics, before unwinding the panic.
+    /// Restores the previous values when the closure completes or panics, before unwinding the
+    /// panic.
     pub fn with_env_vars<F>(label: &str, kvs: Vec<(&str, Option<&str>)>, closure: F)
     where
         F: Fn() + UnwindSafe + RefUnwindSafe,
@@ -464,7 +446,7 @@ mod tests {
                 for (k, v) in old_kvs {
                     reset_env(k, v);
                 }
-            }
+            },
             Err(err) => {
                 eprintln!("W_END[{}]: Err - resetting env to: {:?}", label, old_kvs);
                 for (k, v) in old_kvs {
@@ -472,7 +454,7 @@ mod tests {
                 }
                 drop(guard);
                 panic::resume_unwind(err);
-            }
+            },
         };
         for (k, v) in old_kvs_2 {
             eprintln!(
