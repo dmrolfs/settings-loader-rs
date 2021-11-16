@@ -21,4 +21,7 @@ pub enum SettingsError {
     /// Error in bootstrapping execution from configuration.
     #[error("error during system bootstrap: {message}: {setting}")]
     Bootstrap { message: String, setting: String },
+
+    #[error("environment not recognized for name: {0}")]
+    UnrecognizedEnvironment(String),
 }
