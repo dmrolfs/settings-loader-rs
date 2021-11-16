@@ -1,13 +1,23 @@
-use crate::SettingsError;
-use serde::{Deserialize, Serialize};
 use std::convert::TryFrom;
 use std::fmt::Display;
+
+use serde::{Deserialize, Serialize};
+
+use crate::SettingsError;
 
 #[derive(Debug, Copy, Clone, Display, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Environment {
     Local,
     Production,
+}
+
+static ENVIRONMENTS: [Environment; 2] = [Environment::Local, Environment::Production];
+
+impl Environment {
+    pub fn all() -> &'static [Environment] {
+        &ENVIRONMENTS
+    }
 }
 
 impl AsRef<str> for Environment {
