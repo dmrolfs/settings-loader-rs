@@ -1,8 +1,9 @@
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use serde_with::DisplayFromStr;
 use sqlx::postgres::{PgConnectOptions, PgSslMode};
-use std::fmt;
 
 #[serde_as]
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
