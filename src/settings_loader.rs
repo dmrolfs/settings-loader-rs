@@ -10,7 +10,7 @@ use crate::{Environment, LoadingOptions, SettingsError};
 pub trait SettingsLoader: Debug + Sized {
     type Options: LoadingOptions + Debug;
 
-    fn resources() -> PathBuf {
+    fn resources_home() -> PathBuf {
         PathBuf::from("resources")
     }
     fn app_config_basename() -> &'static str {
@@ -32,7 +32,7 @@ pub trait SettingsLoader: Debug + Sized {
         tracing::info!(?options, "loading common based on CLI options.");
         let resources = options
             .resources_path()
-            .unwrap_or(std::env::current_dir()?.join(Self::resources()));
+            .unwrap_or(std::env::current_dir()?.join(Self::resources_home()));
 
         let mut builder = config::Config::builder();
         match options.config_path() {
