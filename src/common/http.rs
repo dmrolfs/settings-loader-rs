@@ -1,4 +1,5 @@
 use std::net::{AddrParseError, IpAddr};
+use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
