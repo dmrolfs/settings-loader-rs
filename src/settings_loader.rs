@@ -1,11 +1,17 @@
 use std::fmt::Debug;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex, RwLock};
 
 use config::builder::DefaultState;
-use config::ConfigBuilder;
+use config::{Config, ConfigBuilder};
+use once_cell::sync::Lazy;
 use serde::de::DeserializeOwned;
 
 use crate::{Environment, LoadingOptions, SettingsError};
+
+// DMR: in the trait define a config(), watched_config() ops that make the config and with a watcher rx returned too;
+// load would use the config();
+// static LOADED: Lazy<RwLock<Option<Config>>> = Lazy::new(|| RwLock::new(None));
 
 pub trait SettingsLoader: Debug + Sized {
     type Options: LoadingOptions + Debug;
@@ -62,6 +68,8 @@ pub trait SettingsLoader: Debug + Sized {
             .map_err(|err| SettingsError::CliOptionError(err.into()))?;
 
         let config = builder.build()?;
+        loaded = Some(config.clone());
+
         tracing::info!(?config, "configuration loaded");
         let settings = config.try_into()?;
         tracing::info!(?settings, "common built for application.");
