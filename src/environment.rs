@@ -30,9 +30,9 @@ impl AsRef<str> for Environment {
     }
 }
 
-impl Into<String> for Environment {
-    fn into(self) -> String {
-        self.to_string()
+impl From<Environment> for String {
+    fn from(env: Environment) -> Self {
+        env.to_string()
     }
 }
 
@@ -49,7 +49,7 @@ impl FromStr for Environment {
             }
         }
 
-        result.ok_or(SettingsError::UnrecognizedEnvironment(rep.to_string()))
+        result.ok_or_else(|| SettingsError::UnrecognizedEnvironment(rep.to_string()))
     }
 }
 

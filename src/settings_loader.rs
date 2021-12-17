@@ -1,5 +1,5 @@
 use std::fmt::Debug;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use config::builder::DefaultState;
 use config::ConfigBuilder;
@@ -68,31 +68,29 @@ pub trait SettingsLoader: Debug + Sized {
         Ok(settings)
     }
 
-    fn make_explicit_config_source(path: &PathBuf) -> config::File<config::FileSourceFile> {
-        config::File::from(path.as_path()).required(true)
+    fn make_explicit_config_source(path: &Path) -> config::File<config::FileSourceFile> {
+        config::File::from(path).required(true)
     }
 
-    fn make_implicit_app_config_sources(basename: &str, resources: &PathBuf) -> config::File<config::FileSourceFile> {
+    fn make_implicit_app_config_sources(basename: &str, resources: &Path) -> config::File<config::FileSourceFile> {
         tracing::debug!("looking for {} config in: {:?}", basename, resources);
         let path = resources.join(basename);
         config::File::from(path).required(true)
     }
 
-    fn make_app_environment_source(
-        environment: Environment, resources: &PathBuf,
-    ) -> config::File<config::FileSourceFile> {
+    fn make_app_environment_source(environment: Environment, resources: &Path) -> config::File<config::FileSourceFile> {
         tracing::debug!("looking for {} config at {:?}", environment, resources);
         let env_path = resources.join(environment.as_ref());
         config::File::from(env_path).required(false)
     }
 
-    fn make_secrets_source(secrets_path: &PathBuf) -> config::File<config::FileSourceFile> {
-        if secrets_path.as_path().exists() {
+    fn make_secrets_source(secrets_path: &Path) -> config::File<config::FileSourceFile> {
+        if secrets_path.exists() {
             tracing::info!("adding secrets override configuration source from {:?}", secrets_path);
         } else {
             tracing::error!("cannot find secrets override configuration at {:?}", secrets_path);
         }
-        config::File::from(secrets_path.as_path()).required(true)
+        config::File::from(secrets_path).required(true)
     }
 
     fn make_environment_variables_source() -> config::Environment {
@@ -144,7 +142,7 @@ pub trait SettingsLoader: Debug + Sized {
 
     #[tracing::instrument(level = "info", skip(config))]
     fn add_app_environment_source(
-        config: ConfigBuilder<DefaultState>, env: Environment, resources_path: &PathBuf,
+        config: ConfigBuilder<DefaultState>, env: Environment, resources_path: &Path,
     ) -> ConfigBuilder<DefaultState> {
         let env_config_path = resources_path.join(env.as_ref());
         tracing::debug!("looking for {} configu at {:?}", env, resources_path);

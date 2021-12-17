@@ -16,7 +16,7 @@ pub mod error;
 pub mod settings_loader;
 mod tracing;
 
-const APP_ENVIRONMENT: &'static str = "APP_ENVIRONMENT";
+const APP_ENVIRONMENT: &str = "APP_ENVIRONMENT";
 
 pub trait LoadingOptions: Sized {
     type Error: std::error::Error + Sync + Send + 'static;
@@ -35,7 +35,7 @@ pub trait LoadingOptions: Sized {
 
     fn environment(&self) -> Option<Environment> {
         self.environment_override()
-            .map(|e| Ok(e))
+            .map(Ok)
             .or_else(|| match std::env::var(Self::env_app_environment()) {
                 Ok(env_rep) => Some(env_rep.try_into()),
                 Err(std::env::VarError::NotPresent) => {
