@@ -10,19 +10,19 @@ database = ["sqlx"]
 http = ["url"]
 
 [dependencies]
-anyhow = "1.0.51"
+anyhow = "1.0.52"
 config = { git = "https://github.com/dmrolfs/config-rs"}
 enum-display-derive = "0.1.1"
 once_cell = "1.9.0"
-serde = { version = "1.0.132", features = ["derive"] }
-serde_json = "1.0.73"
+serde = { version = "1.0.133", features = ["derive"] }
+serde_json = "1.0.74"
 serde_with = { version = "1.11.0", features = ["chrono", "json", "macros"] }
 thiserror = "1.0.30"
 tracing = "0.1.29"
 tracing-bunyan-formatter = "0.3.1"
 tracing-log = "0.1.2"
-tracing-subscriber = { version = "0.3.3", features = ["env-filter"] }
-sqlx = { version = "0.5.9", default-features = false, features = ["postgres"], optional = true }
+tracing-subscriber = { version = "0.3.5", features = ["env-filter"] }
+sqlx = { version = "0.5.10", default-features = false, features = ["postgres"], optional = true }
 url = { version = "2.2.2", optional = true }
 
 [dev-dependencies]
