@@ -5,6 +5,7 @@ use tracing_log::LogTracer;
 use tracing_subscriber::fmt::MakeWriter;
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Registry};
 
+#[allow(dead_code)]
 pub static TEST_TRACING: Lazy<()> = Lazy::new(|| {
     let default_filter_level = "info";
     let subscriber_name = "test";
@@ -17,6 +18,7 @@ pub static TEST_TRACING: Lazy<()> = Lazy::new(|| {
     };
 });
 
+#[allow(unused)]
 pub fn get_subscriber<S0, S1, W>(name: S0, env_filter: S1, sink: W) -> impl Subscriber + Sync + Send
 where
     S0: Into<String>,

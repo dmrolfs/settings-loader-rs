@@ -1,8 +1,6 @@
-use std::net::{AddrParseError, IpAddr, Ipv4Addr};
-
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DisplayFromStr};
-use url::{Host, Origin, Url};
+use url::{Host, Url};
 
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
