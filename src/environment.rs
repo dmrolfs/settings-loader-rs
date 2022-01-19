@@ -16,7 +16,7 @@ pub enum Environment {
 static ENVIRONMENTS: [Environment; 2] = [Environment::Local, Environment::Production];
 
 impl Environment {
-    pub fn all() -> &'static [Environment] {
+    pub fn all() -> &'static [Self] {
         &ENVIRONMENTS
     }
 }
@@ -41,7 +41,7 @@ impl FromStr for Environment {
 
     fn from_str(rep: &str) -> Result<Self, Self::Err> {
         let mut result = None;
-        for e in Environment::all().iter() {
+        for e in Self::all().iter() {
             let e_rep: &str = e.as_ref();
             if e_rep.eq_ignore_ascii_case(rep) {
                 result = Some(*e);
