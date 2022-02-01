@@ -29,7 +29,7 @@ pub trait SettingsLoader: Debug + Sized {
     where
         Self: DeserializeOwned,
     {
-        tracing::info!(?options, "loading common based on CLI options.");
+        tracing::info!(?options, "loading settings based on CLI options and environment.");
         let resources = options
             .resources_path()
             .unwrap_or(std::env::current_dir()?.join(Self::resources_home()));
@@ -64,7 +64,7 @@ pub trait SettingsLoader: Debug + Sized {
         let config = builder.build()?;
         tracing::info!(?config, "configuration loaded");
         let settings = config.try_into()?;
-        tracing::info!(?settings, "common built for application.");
+        tracing::info!(?settings, "settings built for application.");
         Ok(settings)
     }
 
@@ -73,13 +73,13 @@ pub trait SettingsLoader: Debug + Sized {
     }
 
     fn make_implicit_app_config_sources(basename: &str, resources: &Path) -> config::File<config::FileSourceFile> {
-        tracing::debug!("looking for {} config in: {:?}", basename, resources);
+        tracing::info!("looking for {} config in: {:?}", basename, resources);
         let path = resources.join(basename);
         config::File::from(path).required(true)
     }
 
     fn make_app_environment_source(environment: Environment, resources: &Path) -> config::File<config::FileSourceFile> {
-        tracing::debug!("looking for {} config at {:?}", environment, resources);
+        tracing::info!("looking for {} config at {:?}", environment, resources);
         let env_path = resources.join(environment.as_ref());
         config::File::from(env_path).required(false)
     }

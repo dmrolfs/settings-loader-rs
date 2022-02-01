@@ -44,7 +44,8 @@ pub trait LoadingOptions: Sized {
     }
 
     fn environment(&self) -> Option<Environment> {
-        self.environment_override()
+        let env = self
+            .environment_override()
             .map(Ok)
             .or_else(|| match std::env::var(Self::env_app_environment()) {
                 Ok(env_rep) => Some(env_rep.try_into()),
@@ -59,7 +60,10 @@ pub trait LoadingOptions: Sized {
                 Err(err) => Some(Err(err.into())),
             })
             .transpose()
-            .expect("failed to pull application environment")
+            .expect("failed to pull application environment");
+
+        ::tracing::info!("loading settings for environment: {env:?}");
+        env
     }
 
     fn environment_override(&self) -> Option<Environment> {
