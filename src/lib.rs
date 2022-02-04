@@ -8,9 +8,6 @@ future_incompatible,
 rust_2018_idioms
 )]
 
-#[macro_use]
-extern crate enum_display_derive;
-
 use std::path::PathBuf;
 
 use config::builder::DefaultState;

@@ -1,6 +1,6 @@
 [package]
 name = "settings_loader"
-version = "0.5.1"
+version = "0.6.0"
 edition = "2021"
 description = "Opinionated configuration settings load mechanism for Rust applications"
 repository = "https://github.com/dmrolfs/settings-loader-rs"
@@ -18,7 +18,6 @@ http = ["url"]
 [dependencies]
 anyhow = "1.0.53"
 config = { git = "https://github.com/dmrolfs/config-rs"}
-enum-display-derive = "0.1.1"
 once_cell = "1.9.0"
 secrecy = { version = "0.8.0", features = ["serde"], optional = true }
 serde = { version = "1.0.136", features = ["derive"] }

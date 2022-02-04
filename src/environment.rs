@@ -1,12 +1,12 @@
 use std::convert::TryFrom;
-use std::fmt::Display;
+use std::fmt;
 use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
 use crate::SettingsError;
 
-#[derive(Debug, Copy, Clone, Display, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Environment {
     Local,
@@ -21,11 +21,23 @@ impl Environment {
     }
 }
 
+const LOCAL_REP: &str = "local";
+const PRODUCTION_REP: &str = "production";
+
+impl fmt::Display for Environment {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Local => write!(f, "{}", LOCAL_REP),
+            Self::Production => write!(f, "{}", PRODUCTION_REP),
+        }
+    }
+}
+
 impl AsRef<str> for Environment {
     fn as_ref(&self) -> &str {
         match self {
-            Environment::Local => "Local",
-            Environment::Production => "Production",
+            Environment::Local => LOCAL_REP,
+            Environment::Production => PRODUCTION_REP,
         }
     }
 }
@@ -79,19 +91,19 @@ mod tests {
     #[test]
     fn test_to_string() {
         let actual: String = Environment::Local.to_string();
-        assert_eq!(actual, "Local".to_string());
+        assert_eq!(actual, "local".to_string());
 
         let actual: String = Environment::Production.to_string();
-        assert_eq!(actual, "Production".to_string());
+        assert_eq!(actual, "production".to_string());
     }
 
     #[test]
     fn test_into_string() {
         let actual: String = Environment::Local.into();
-        assert_eq!(actual, "Local".to_string());
+        assert_eq!(actual, "local".to_string());
 
         let actual: String = Environment::Production.into();
-        assert_eq!(actual, "Production".to_string());
+        assert_eq!(actual, "production".to_string());
     }
 
     #[test]
