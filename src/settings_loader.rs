@@ -24,6 +24,13 @@ pub trait SettingsLoader: Debug + Sized {
         "__"
     }
 
+    /// Load settings by composing a set of sources.
+    /// Order of precedence is:
+    /// 1. CLI option overrides,
+    /// 2. environment variables,
+    /// 3. secrets file
+    /// 4. explicit application configuration file or implicitly loaded application configuration
+    ///    with environment file overrides.
     #[tracing::instrument(level = "info")]
     fn load(options: &Self::Options) -> Result<Self, SettingsError>
     where
