@@ -1,4 +1,5 @@
-use std::convert::TryFrom;
+use crate::internals::RenameRule;
+use once_cell::sync::Lazy;
 use std::fmt;
 use std::str::FromStr;
 
@@ -6,45 +7,34 @@ use serde::{Deserialize, Serialize};
 
 use crate::SettingsError;
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Environment {
-    Local,
-    Production,
-}
+pub static LOCAL: Lazy<Environment> = Lazy::new(|| Environment("local".to_string()));
+pub static PRODUCTION: Lazy<Environment> = Lazy::new(|| Environment("production".to_string()));
 
-static ENVIRONMENTS: [Environment; 2] = [Environment::Local, Environment::Production];
-
-impl Environment {
-    pub fn all() -> &'static [Self] {
-        &ENVIRONMENTS
-    }
-}
-
-const LOCAL_REP: &str = "local";
-const PRODUCTION_REP: &str = "production";
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct Environment(String);
 
 impl fmt::Display for Environment {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Local => write!(f, "{}", LOCAL_REP),
-            Self::Production => write!(f, "{}", PRODUCTION_REP),
-        }
+        write!(f, "{}", self.0)
     }
 }
 
 impl AsRef<str> for Environment {
     fn as_ref(&self) -> &str {
-        match self {
-            Environment::Local => LOCAL_REP,
-            Environment::Production => PRODUCTION_REP,
-        }
+        self.0.as_str()
     }
 }
 
 impl From<Environment> for String {
     fn from(env: Environment) -> Self {
-        env.to_string()
+        env.0
+    }
+}
+
+impl From<String> for Environment {
+    fn from(rep: String) -> Self {
+        rep.as_str().into()
     }
 }
 
@@ -52,32 +42,13 @@ impl FromStr for Environment {
     type Err = SettingsError;
 
     fn from_str(rep: &str) -> Result<Self, Self::Err> {
-        let mut result = None;
-        for e in Self::all().iter() {
-            let e_rep: &str = e.as_ref();
-            if e_rep.eq_ignore_ascii_case(rep) {
-                result = Some(*e);
-                break;
-            }
-        }
-
-        result.ok_or_else(|| SettingsError::UnrecognizedEnvironment(rep.to_string()))
+        Ok(rep.into())
     }
 }
 
-impl TryFrom<&str> for Environment {
-    type Error = SettingsError;
-
-    fn try_from(rep: &str) -> Result<Self, Self::Error> {
-        Self::from_str(rep)
-    }
-}
-
-impl TryFrom<String> for Environment {
-    type Error = SettingsError;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        Self::from_str(&value)
+impl From<&str> for Environment {
+    fn from(rep: &str) -> Self {
+        Self(RenameRule::KebabCase.apply(rep.trim()))
     }
 }
 
@@ -90,30 +61,42 @@ mod tests {
 
     #[test]
     fn test_to_string() {
-        let actual: String = Environment::Local.to_string();
+        let actual: String = LOCAL.to_string();
         assert_eq!(actual, "local".to_string());
 
-        let actual: String = Environment::Production.to_string();
+        let actual: String = PRODUCTION.to_string();
         assert_eq!(actual, "production".to_string());
     }
 
     #[test]
     fn test_into_string() {
-        let actual: String = Environment::Local.into();
+        let actual: String = LOCAL.clone().into();
         assert_eq!(actual, "local".to_string());
 
-        let actual: String = Environment::Production.into();
+        let actual: String = PRODUCTION.clone().into();
         assert_eq!(actual, "production".to_string());
     }
 
     #[test]
     fn test_try_fromstr() {
-        assert_eq!(Environment::Local, assert_ok!(Environment::from_str("local")));
-        assert_eq!(Environment::Local, assert_ok!(Environment::from_str("LOCAL")));
-        assert_eq!(Environment::Production, assert_ok!(Environment::from_str("PrOdUcTiOn")));
-        assert_eq!(Environment::Local, assert_ok!(Environment::from_str("lOcAl")));
-        assert_err!(Environment::from_str("foobar"));
-        assert_err!(Environment::from_str("  local"));
-        assert_err!(Environment::from_str("local "));
+        assert_eq!(assert_ok!(Environment::from_str("local")), LOCAL.clone());
+        assert_eq!(
+            assert_ok!(Environment::from_str("LOCAL")),
+            assert_ok!(Environment::from_str("l-o-c-a-l"))
+        );
+        assert_eq!(assert_ok!(Environment::from_str("PrOdUcTiOn")), "pr-od-uc-ti-on".into());
+        assert_eq!(assert_ok!(Environment::from_str("lOcAl")), "l-oc-al".into());
+        assert_ok!(Environment::from_str("foobar"));
+        assert_eq!(assert_ok!(Environment::from_str("  local")), LOCAL.clone());
+        assert_eq!(assert_ok!(Environment::from_str("local ")), LOCAL.clone());
+        assert_eq!(
+            assert_ok!(Environment::from_str("Int-1AwsEuWest-1Dev")),
+            Environment("int-1-aws-eu-west-1-dev".to_string()),
+        );
+        let actual: Environment = "PRODUCTION".into();
+        assert_eq!(actual, Environment("p-r-o-d-u-c-t-i-o-n".to_string()));
+        let staging: String = "StagingAwsUsWest2".to_string();
+        let actual: Environment = staging.into();
+        assert_eq!(actual, Environment("staging-aws-us-west2".to_string()));
     }
 }

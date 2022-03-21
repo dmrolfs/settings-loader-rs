@@ -188,14 +188,13 @@ pub trait SettingsLoader: Debug + Sized {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::{environment, NoOptions, APP_ENVIRONMENT};
     use claim::{assert_err, assert_ok};
     use config::{Config, FileFormat};
     use pretty_assertions::assert_eq;
     use serde::{Deserialize, Serialize};
     use serde_with::{serde_as, DisplayFromStr};
-
-    use super::*;
-    use crate::{NoOptions, APP_ENVIRONMENT};
 
     #[derive(Debug, PartialEq, Eq)]
     struct TestOptions(String, Option<Environment>);
@@ -212,7 +211,7 @@ mod tests {
         }
 
         fn environment_override(&self) -> Option<Environment> {
-            self.1
+            self.1.clone()
         }
 
         #[tracing::instrument(level = "info", skip(config))]
@@ -299,7 +298,7 @@ mod tests {
                     FileFormat::Yaml,
                 ));
 
-                let options = TestOptions("bar".to_string(), Some(Environment::Local));
+                let options = TestOptions("bar".to_string(), Some(environment::LOCAL.clone()));
                 let config = assert_ok!(options.load_overrides(config));
 
                 let config = assert_ok!(config.build());

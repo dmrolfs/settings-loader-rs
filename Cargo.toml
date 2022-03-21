@@ -1,6 +1,6 @@
 [package]
 name = "settings_loader"
-version = "0.6.0"
+version = "0.7.0"
 edition = "2021"
 description = "Opinionated configuration settings load mechanism for Rust applications"
 repository = "https://github.com/dmrolfs/settings-loader-rs"

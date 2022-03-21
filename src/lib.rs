@@ -20,6 +20,7 @@ pub use crate::settings_loader::SettingsLoader;
 pub mod common;
 pub mod environment;
 pub mod error;
+mod internals;
 pub mod settings_loader;
 mod tracing;
 
@@ -41,20 +42,20 @@ pub trait LoadingOptions: Sized {
     }
 
     fn environment(&self) -> Option<Environment> {
-        let env = self
+        let env: Option<Environment> = self
             .environment_override()
-            .map(Ok)
+            .map(Result::<_, std::env::VarError>::Ok)
             .or_else(|| match std::env::var(Self::env_app_environment()) {
-                Ok(env_rep) => Some(env_rep.try_into()),
+                Ok(env_rep) => Some(Ok(env_rep.into())),
                 Err(std::env::VarError::NotPresent) => {
                     ::tracing::warn!(
-                        "no environment variable override on common specified at env var, {}",
+                        "no environment variable override set at env var, {}",
                         Self::env_app_environment()
                     );
 
                     None
                 },
-                Err(err) => Some(Err(err.into())),
+                Err(err) => Some(Err(err)),
             })
             .transpose()
             .expect("failed to pull application environment");
