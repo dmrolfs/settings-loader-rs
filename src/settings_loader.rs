@@ -334,7 +334,10 @@ mod tests {
     fn test_settings_load_w_options() -> anyhow::Result<()> {
         with_env_vars(
             "test_settings_load_w_options",
-            vec![(APP_ENVIRONMENT, Some("local"))],
+            vec![
+                (APP_ENVIRONMENT, Some("local")),
+                ("APP__DATABASE__PASSWORD", Some("my voice is my password")),
+            ],
             || {
                 eprintln!("+ test_settings_load_w_options");
                 Lazy::force(&TEST_TRACING);
@@ -354,7 +357,7 @@ mod tests {
                     },
                     database: TestDbSettings {
                         username: "postgres".to_string(),
-                        password: "password".to_string(),
+                        password: "my voice is my password".to_string(),
                         port: 5432,
                         host: "localhost".to_string(),
                         database_name: "propensity".to_string(),
