@@ -70,28 +70,28 @@ pub trait SettingsLoader: Debug + Sized {
 
         let config = builder.build()?;
         tracing::info!(?config, "configuration loaded");
-        let settings = config.try_into()?;
+        let settings = config.try_deserialize()?;
         tracing::info!(?settings, "settings built for application.");
         Ok(settings)
     }
 
-    fn make_explicit_config_source(path: &Path) -> config::File<config::FileSourceFile> {
+    fn make_explicit_config_source(path: &Path) -> config::File<config::FileSourceFile, config::FileFormat> {
         config::File::from(path).required(true)
     }
 
-    fn make_implicit_app_config_sources(basename: &str, resources: &Path) -> config::File<config::FileSourceFile> {
+    fn make_implicit_app_config_sources(basename: &str, resources: &Path) -> config::File<config::FileSourceFile, config::FileFormat> {
         tracing::info!("looking for {} config in: {:?}", basename, resources);
         let path = resources.join(basename);
         config::File::from(path).required(true)
     }
 
-    fn make_app_environment_source(environment: Environment, resources: &Path) -> config::File<config::FileSourceFile> {
+    fn make_app_environment_source(environment: Environment, resources: &Path) -> config::File<config::FileSourceFile, config::FileFormat> {
         tracing::info!("looking for {} config at {:?}", environment, resources);
         let env_path = resources.join(environment.as_ref());
         config::File::from(env_path).required(false)
     }
 
-    fn make_secrets_source(secrets_path: &Path) -> config::File<config::FileSourceFile> {
+    fn make_secrets_source(secrets_path: &Path) -> config::File<config::FileSourceFile, config::FileFormat> {
         if secrets_path.exists() {
             tracing::info!("adding secrets override configuration source from {:?}", secrets_path);
         } else {
@@ -304,7 +304,7 @@ mod tests {
                 let config = assert_ok!(config.build());
                 tracing::info!(?config, "eligibility config loaded.");
 
-                let actual: TestSettings = assert_ok!(config.try_into());
+                let actual: TestSettings = assert_ok!(config.try_deserialize());
                 assert_eq!(
                     actual,
                     TestSettings {

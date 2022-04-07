@@ -22,6 +22,9 @@ pub enum SettingsError {
     #[error("error during system bootstrap: {message}: {setting}")]
     Bootstrap { message: String, setting: String },
 
+    #[error("infallible operation failed: {0}")]
+    Infallible(#[from] std::convert::Infallible),
+
     #[error("environment not recognized for name: {0}")]
     UnrecognizedEnvironment(String),
 }
