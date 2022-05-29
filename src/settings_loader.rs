@@ -48,7 +48,7 @@ pub trait SettingsLoader: Debug + Sized {
             None => {
                 tracing::info!(?options, "loading settings based on CLI options and environment.");
                 let mut resource_dirs = Vec::default();
-                for dir in options.resource_dirs() {
+                for dir in options.implicit_search_paths() {
                     resource_dirs.push(dir.absolutize()?.into_owned());
                 }
                 if resource_dirs.is_empty() {
@@ -251,7 +251,7 @@ mod tests {
             Ok(config.set_override("foo", self.0.as_str())?)
         }
 
-        fn resource_dirs(&self) -> Vec<PathBuf> {
+        fn implicit_search_paths(&self) -> Vec<PathBuf> {
             vec!["./tests/override".into(), "resources".into()]
         }
     }

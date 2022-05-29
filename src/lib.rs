@@ -33,11 +33,7 @@ pub trait LoadingOptions: Sized {
 
     fn secrets_path(&self) -> Option<PathBuf>;
 
-    fn resource_dirs(&self) -> Vec<PathBuf>;
-
-    // fn resources_path(&self) -> Option<PathBuf> {
-    //     None
-    // }
+    fn implicit_search_paths(&self) -> Vec<PathBuf>;
 
     fn load_overrides(&self, config: ConfigBuilder<DefaultState>) -> Result<ConfigBuilder<DefaultState>, Self::Error> {
         Ok(config)
@@ -88,7 +84,7 @@ impl LoadingOptions for () {
         None
     }
 
-    fn resource_dirs(&self) -> Vec<PathBuf> {
+    fn implicit_search_paths(&self) -> Vec<PathBuf> {
         Vec::default()
     }
 }
