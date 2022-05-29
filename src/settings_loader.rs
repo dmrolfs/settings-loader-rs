@@ -3,9 +3,12 @@ use std::path::{Path, PathBuf};
 
 use config::builder::DefaultState;
 use config::ConfigBuilder;
+use path_absolutize::*;
 use serde::de::DeserializeOwned;
 
 use crate::{Environment, LoadingOptions, SettingsError};
+
+type ConfigFile = config::File<config::FileSourceFile, config::FileFormat>;
 
 pub trait SettingsLoader: Debug + Sized {
     type Options: LoadingOptions + Debug;
@@ -13,6 +16,7 @@ pub trait SettingsLoader: Debug + Sized {
     fn resources_home() -> PathBuf {
         PathBuf::from("resources")
     }
+
     fn app_config_basename() -> &'static str {
         "application"
     }
@@ -36,37 +40,45 @@ pub trait SettingsLoader: Debug + Sized {
     where
         Self: DeserializeOwned,
     {
-        tracing::info!(?options, "loading settings based on CLI options and environment.");
-        let resources = options
-            .resources_path()
-            .unwrap_or(std::env::current_dir()?.join(Self::resources_home()));
-
         let mut builder = config::Config::builder();
         match options.config_path() {
             Some(ref path) => {
                 builder = builder.add_source(Self::make_explicit_config_source(path));
             },
             None => {
-                builder = builder.add_source(Self::make_implicit_app_config_sources(
+                tracing::info!(?options, "loading settings based on CLI options and environment.");
+                let mut resource_dirs = Vec::default();
+                for dir in options.resource_dirs() {
+                    resource_dirs.push(dir.absolutize()?.into_owned());
+                }
+                if resource_dirs.is_empty() {
+                    tracing::info!("no resource directories specified, using default.");
+                    resource_dirs.push(Self::default_resource_path());
+                }
+
+                builder = builder.add_source(Self::make_implicit_config_source(
                     Self::app_config_basename(),
-                    &resources,
+                    &resource_dirs,
                 ));
 
                 if let Some(env) = options.environment() {
-                    builder = builder.add_source(Self::make_app_environment_source(env, &resources));
+                    for source in Self::make_environment_sources(env, &resource_dirs) {
+                        builder = builder.add_source(source);
+                    }
                 }
             },
         }
 
         if let Some(ref secrets) = options.secrets_path() {
-            builder = builder.add_source(Self::make_secrets_source(secrets));
+            let abs_secrets = secrets.absolutize()?;
+            builder = builder.add_source(Self::make_secrets_source(&abs_secrets));
         }
 
         builder = builder.add_source(Self::make_environment_variables_source());
 
         builder = options
             .load_overrides(builder)
-            .map_err(|err| SettingsError::CliOptionError(err.into()))?;
+            .map_err(|err| SettingsError::CliOption(err.into()))?;
 
         let config = builder.build()?;
         tracing::info!(?config, "configuration loaded");
@@ -75,77 +87,95 @@ pub trait SettingsLoader: Debug + Sized {
         Ok(settings)
     }
 
-    fn make_explicit_config_source(path: &Path) -> config::File<config::FileSourceFile, config::FileFormat> {
-        config::File::from(path).required(true)
+    fn default_resource_path() -> PathBuf {
+        let current_dir = std::env::current_dir().expect("failed to get current directory");
+        current_dir.join(Self::resources_home())
     }
 
-    fn make_implicit_app_config_sources(basename: &str, resources: &Path) -> config::File<config::FileSourceFile, config::FileFormat> {
-        tracing::info!("looking for {} config in: {:?}", basename, resources);
-        let path = resources.join(basename);
-        config::File::from(path).required(true)
+    fn make_glob_walker(base_dir: impl AsRef<Path>, pattern: impl AsRef<str>) -> Option<globwalk::GlobWalker> {
+        globwalk::GlobWalkerBuilder::new(base_dir.as_ref(), pattern.as_ref())
+            .build()
+            .map_err(|err| {
+                tracing::warn!(
+                    error=?err,
+                    "failed to build glob walker for base-directory:{:?} pattern:{}",
+                    base_dir.as_ref(), pattern.as_ref()
+                );
+                err
+            })
+            .ok()
     }
 
-    fn make_app_environment_source(environment: Environment, resources: &Path) -> config::File<config::FileSourceFile, config::FileFormat> {
-        tracing::info!("looking for {} config at {:?}", environment, resources);
+    /// returns the first settings resource file found in the list of resource directories.
+    fn find_resource_dir(resource: &str, dirs: &[PathBuf]) -> Option<PathBuf> {
+        for d in dirs.iter() {
+            let walker = Self::make_glob_walker(&d, format!("{}.*", resource));
+            let walker = match walker {
+                Some(w) => w,
+                None => continue,
+            };
+
+            let found = walker
+                .into_iter()
+                .filter_map(|entry| {
+                    tracing::info!("found settings entry: {entry:?}");
+                    Result::ok(entry)
+                })
+                .next()
+                .is_some();
+            if found {
+                tracing::info!("found settings {resource} file in base-directory:{d:?}");
+                return Some(d.clone());
+            }
+        }
+
+        tracing::warn!("no settings resource found for {resource} in {dirs:?}");
+        None
+    }
+
+    fn make_explicit_config_source(path: &Path) -> ConfigFile {
+        ConfigFile::from(path).required(true)
+    }
+
+    fn make_implicit_config_source(basename: &str, dir_paths: &[PathBuf]) -> ConfigFile {
+        let source_dir = Self::find_resource_dir(basename, dir_paths)
+            // .cloned()
+            .unwrap_or_else(Self::default_resource_path);
+
+        let path = source_dir.join(basename);
+        ConfigFile::from(path).required(true)
+    }
+
+    fn make_environment_sources(environment: Environment, dir_paths: &[PathBuf]) -> Vec<ConfigFile> {
+        dir_paths
+            .iter()
+            .rev()
+            .map(|dir| Self::make_app_environment_source(&environment, dir))
+            .collect()
+    }
+
+    fn make_app_environment_source(environment: &Environment, resources: &Path) -> ConfigFile {
+        tracing::info!("creating application {environment} settings source at {:?}", resources);
         let env_path = resources.join(environment.as_ref());
-        config::File::from(env_path).required(false)
+        ConfigFile::from(env_path).required(false)
     }
 
-    fn make_secrets_source(secrets_path: &Path) -> config::File<config::FileSourceFile, config::FileFormat> {
+    fn make_secrets_source(secrets_path: &Path) -> ConfigFile {
         if secrets_path.exists() {
-            tracing::info!("adding secrets override configuration source from {:?}", secrets_path);
+            tracing::info!("adding secrets override configuration source at {:?}", secrets_path);
         } else {
             tracing::error!("cannot find secrets override configuration at {:?}", secrets_path);
         }
-        config::File::from(secrets_path).required(true)
+        ConfigFile::from(secrets_path).required(true)
     }
 
     fn make_environment_variables_source() -> config::Environment {
-        let config_env =
-            config::Environment::with_prefix(Self::environment_prefix()).separator(Self::environment_path_separator());
+        let prefix = Self::environment_prefix();
+        let delim = Self::environment_path_separator();
+        let config_env = config::Environment::with_prefix(prefix).separator(delim);
         tracing::info!("loading environment variables with: {:?}", config_env);
         config_env
     }
-
-    // #[tracing::instrument(level = "info", skip(config,))]
-    // fn add_configuration_source(
-    //     config: ConfigBuilder<DefaultState>, specific_config_path: Option<PathBuf>,
-    // ) -> Result<ConfigBuilder<DefaultState>, SettingsError> {
-    //     match specific_config_path {
-    //         Some(explicit_path) => {
-    //             let config = config.add_source(config::File::from(explicit_path).required(true));
-    //             Ok(config)
-    //         }
-    //
-    //         None => {
-    //             let resources_path = std::env::current_dir()?.join(Self::resources());
-    //             let config_path = resources_path.join(Self::app_config_basename());
-    //             tracing::debug!(
-    //                 "looking for {} config in: {:?}",
-    //                 Self::app_config_basename(),
-    //                 resources_path
-    //             );
-    //             let config = config.add_source(config::File::from(config_path).required(true));
-    //
-    //             match std::env::var(CliOptions::env_app_environment()) {
-    //                 Ok(rep) => {
-    //                     let environment: Environment = rep.try_into()?;
-    //                     Ok(Self::add_app_environment_source(config, environment, &resources_path))
-    //                 }
-    //
-    //                 Err(std::env::VarError::NotPresent) => {
-    //                     tracing::warn!(
-    //                         "no environment variable override on common specified at env var, {}",
-    //                         Self::env_app_environment()
-    //                     );
-    //                     Ok(config)
-    //                 }
-    //
-    //                 Err(err) => Err(err.into()),
-    //             }
-    //         }
-    //     }
-    // }
 
     #[tracing::instrument(level = "info", skip(config))]
     fn add_app_environment_source(
@@ -220,6 +250,10 @@ mod tests {
         ) -> Result<ConfigBuilder<DefaultState>, Self::Error> {
             Ok(config.set_override("foo", self.0.as_str())?)
         }
+
+        fn resource_dirs(&self) -> Vec<PathBuf> {
+            vec!["./tests/override".into(), "resources".into()]
+        }
     }
 
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -252,6 +286,7 @@ mod tests {
         #[serde_as(as = "DisplayFromStr")]
         pub port: u16,
         pub host: String,
+        #[serde(rename = "name")]
         pub database_name: String,
         pub require_ssl: bool,
     }
@@ -289,7 +324,7 @@ mod tests {
                     |   password: password
                     |   port: 5432
                     |   host: "localhost"
-                    |   database_name: "propensity"
+                    |   name: "propensity"
                     |   require_ssl: true
                 "###
                     .trim_margin_with("| ")
@@ -360,7 +395,7 @@ mod tests {
                         password: "my voice is my password".to_string(),
                         port: 5432,
                         host: "localhost".to_string(),
-                        database_name: "propensity".to_string(),
+                        database_name: "local_db".to_string(),
                         require_ssl: false,
                     },
                     foo: "zed".to_string(),
@@ -397,13 +432,53 @@ mod tests {
                     },
                     database: TestDbSettings {
                         username: "postgres".to_string(),
-                        password: "password".to_string(),
+                        password: "resources".to_string(),
                         port: 5432,
                         host: "localhost".to_string(),
-                        database_name: "propensity".to_string(),
+                        database_name: "default_db".to_string(),
                         require_ssl: false,
                     },
                     foo: "without_options".to_string(),
+                };
+
+                assert_eq!(actual, expected);
+            },
+        );
+        eprintln!("- test_settings_load_w_no_options");
+        Ok(())
+    }
+
+    #[test]
+    fn test_settings_load_w_override() -> anyhow::Result<()> {
+        eprintln!("+ test_settings_load_w_override");
+        Lazy::force(&TEST_TRACING);
+        let main_span = tracing::info_span!("test_settings_load_w_override");
+        let _ = main_span.enter();
+
+        with_env_vars(
+            "test_settings_load_w_override",
+            vec![(APP_ENVIRONMENT, Some("production"))],
+            || {
+                assert_eq!(assert_ok!(std::env::var(APP_ENVIRONMENT)), "production");
+                tracing::info!("envar: {} = {:?}", APP_ENVIRONMENT, std::env::var(APP_ENVIRONMENT));
+
+                let actual = assert_ok!(TestSettings::load(&TestOptions("zed".to_string(), None)));
+
+                let expected = TestSettings {
+                    application: TestHttpSettings {
+                        port: 8000,
+                        host: "127.0.0.1".to_string(),
+                        // base_url: "http://127.0.0.1".to_string(),
+                    },
+                    database: TestDbSettings {
+                        username: "postgres".to_string(),
+                        password: "password".to_string(),
+                        port: 5432,
+                        host: "localhost".to_string(),
+                        database_name: "override".to_string(),
+                        require_ssl: false,
+                    },
+                    foo: "zed".to_string(),
                 };
 
                 assert_eq!(actual, expected);

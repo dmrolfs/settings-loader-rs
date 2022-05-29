@@ -1,0 +1,9 @@
+application:
+  host: 127.0.0.1
+database:
+  name: override
+  password: "password"
+#database:
+#  host: postgres_1632546102
+#  require_ssl: true
+foo: override

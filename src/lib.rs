@@ -27,15 +27,17 @@ mod tracing;
 const APP_ENVIRONMENT: &str = "APP_ENVIRONMENT";
 
 pub trait LoadingOptions: Sized {
-    type Error: std::error::Error + Sync + Send + 'static;
+    type Error: std::error::Error + From<error::SettingsError> + Sync + Send + 'static;
 
     fn config_path(&self) -> Option<PathBuf>;
 
     fn secrets_path(&self) -> Option<PathBuf>;
 
-    fn resources_path(&self) -> Option<PathBuf> {
-        None
-    }
+    fn resource_dirs(&self) -> Vec<PathBuf>;
+
+    // fn resources_path(&self) -> Option<PathBuf> {
+    //     None
+    // }
 
     fn load_overrides(&self, config: ConfigBuilder<DefaultState>) -> Result<ConfigBuilder<DefaultState>, Self::Error> {
         Ok(config)
@@ -84,5 +86,9 @@ impl LoadingOptions for () {
 
     fn secrets_path(&self) -> Option<PathBuf> {
         None
+    }
+
+    fn resource_dirs(&self) -> Vec<PathBuf> {
+        Vec::default()
     }
 }
