@@ -2,17 +2,13 @@ use std::fmt;
 
 use secrecy::{ExposeSecret, Secret};
 use serde::Deserialize;
-use serde_with::serde_as;
-use serde_with::DisplayFromStr;
 use sqlx::postgres::{PgConnectOptions, PgSslMode};
 
-#[serde_as]
 #[derive(Clone, Deserialize)]
 pub struct DatabaseSettings {
     pub username: String,
     pub password: Secret<String>,
     pub host: String,
-    #[serde_as(as = "DisplayFromStr")]
     pub port: u16,
     pub database_name: String,
     pub require_ssl: bool,
@@ -60,9 +56,10 @@ impl PartialEq for DatabaseSettings {
 }
 #[cfg(test)]
 mod tests {
-    use pretty_assertions::assert_eq;
-
     use super::*;
+    use claim::*;
+    use pretty_assertions::assert_eq;
+    use trim_margin::MarginTrimmable;
 
     #[test]
     fn test_password_redaction() {
@@ -80,5 +77,26 @@ mod tests {
             actual,
             r##"DatabaseSettings { username: "Billy", password: Secret([REDACTED alloc::string::String]), host: "localhost", port: 1234, database_name: "db_name", require_ssl: true }"##
         )
+    }
+
+    #[test]
+    fn test_database_deser() {
+        let yaml = r##"
+            |username: Billy
+            |password: my-secret
+            |port: 1234
+            |host: localhost
+            |database_name: db_name
+            |require_ssl: true
+            |"##
+        .trim_margin()
+        .unwrap();
+
+        let from_yaml: DatabaseSettings = assert_ok!(serde_yaml::from_str(yaml.as_str()));
+        assert_eq!(from_yaml.username, "Billy".to_string(),);
+        assert_eq!(from_yaml.port, 1234,);
+        assert_eq!(from_yaml.host, "localhost".to_string(),);
+        assert_eq!(from_yaml.database_name, "db_name".to_string(),);
+        assert_eq!(from_yaml.require_ssl, true,);
     }
 }

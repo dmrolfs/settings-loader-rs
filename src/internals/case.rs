@@ -9,7 +9,7 @@ use crate::SettingsError;
 
 /// The different possible ways to change case of strings.
 #[allow(dead_code)]
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub enum RenameRule {
     /// Don't apply a default rename rule.
     None,

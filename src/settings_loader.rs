@@ -109,7 +109,7 @@ pub trait SettingsLoader: Debug + Sized {
     /// returns the first settings resource file found in the list of resource directories.
     fn find_resource_dir(resource: &str, dirs: &[PathBuf]) -> Option<PathBuf> {
         for d in dirs.iter() {
-            let walker = Self::make_glob_walker(&d, format!("{}.*", resource));
+            let walker = Self::make_glob_walker(d, format!("{}.*", resource));
             let walker = match walker {
                 Some(w) => w,
                 None => continue,
@@ -371,7 +371,9 @@ mod tests {
             "test_settings_load_w_options",
             vec![
                 (APP_ENVIRONMENT, Some("local")),
+                ("APP__APPLICATION__PORT", Some("80")),
                 ("APP__DATABASE__PASSWORD", Some("my voice is my password")),
+                ("APP__DATABASE__PORT", Some("1111")),
             ],
             || {
                 eprintln!("+ test_settings_load_w_options");
@@ -386,14 +388,14 @@ mod tests {
 
                 let expected: TestSettings = TestSettings {
                     application: TestHttpSettings {
-                        port: 8000,
+                        port: 80,
                         host: "127.0.0.1".to_string(),
                         // base_url: "http://127.0.0.1".to_string(),
                     },
                     database: TestDbSettings {
                         username: "postgres".to_string(),
                         password: "my voice is my password".to_string(),
-                        port: 5432,
+                        port: 1111,
                         host: "localhost".to_string(),
                         database_name: "local_db".to_string(),
                         require_ssl: false,

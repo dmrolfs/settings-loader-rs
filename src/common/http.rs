@@ -1,12 +1,9 @@
 use serde::{Deserialize, Serialize};
-use serde_with::{serde_as, DisplayFromStr};
 use url::{Host, Url};
 
-#[serde_as]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct HttpServerSettings {
     pub host: String,
-    #[serde_as(as = "DisplayFromStr")]
     pub port: u16,
 }
 
@@ -25,6 +22,7 @@ impl HttpServerSettings {
 mod tests {
     use claim::*;
     use pretty_assertions::assert_eq;
+    use trim_margin::MarginTrimmable;
 
     use super::*;
 
@@ -44,6 +42,29 @@ mod tests {
         let actual = assert_ok!(dns.url_host());
         let expected = assert_ok!(Host::parse("job_manager"));
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_http_settings_ser() {
+        let settings = HttpServerSettings { host: "example.com".to_string(), port: 80 };
+        let yaml = assert_ok!(serde_yaml::to_string(&settings));
+        assert_eq!(
+            yaml,
+            r##"|host: example.com
+                |port: 80
+                |"##
+            .trim_margin()
+            .unwrap()
+        );
+
+        let json = assert_ok!(serde_json::to_string(&settings));
+        assert_eq!(json, r##"{"host":"example.com","port":80}"##.trim_margin().unwrap());
+
+        let from_yaml: HttpServerSettings = assert_ok!(serde_yaml::from_str(yaml.as_str()));
+        assert_eq!(from_yaml, settings);
+
+        let from_json: HttpServerSettings = assert_ok!(serde_json::from_str(json.as_str()));
+        assert_eq!(from_json, settings);
     }
 
     #[test]
