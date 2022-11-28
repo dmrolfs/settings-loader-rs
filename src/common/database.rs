@@ -29,11 +29,11 @@ pub struct DatabaseSettings {
     pub max_connections: Option<u32>,
 
     #[serde(default, alias = "max_lifetime_secs")]
-    #[serde_as(as = "serde_with::DurationSeconds<u64>")]
+    #[serde_as(as = "Option<serde_with::DurationSeconds<u64>>")]
     pub max_lifetime: Option<Duration>,
 
     #[serde(default, alias = "idle_timeout_secs")]
-    #[serde_as(as = "serde_with::DurationSeconds<u64>")]
+    #[serde_as(as = "Option<serde_with::DurationSeconds<u64>>")]
     pub idle_timeout: Option<Duration>,
 }
 
