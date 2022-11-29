@@ -8,6 +8,10 @@ pub struct HttpServerSettings {
 }
 
 impl HttpServerSettings {
+    pub fn address(&self) -> String {
+        format!("{}:{}", self.host, self.port)
+    }
+
     pub fn url_host(&self) -> Result<Host, url::ParseError> {
         Host::parse(self.host.as_str())
     }
