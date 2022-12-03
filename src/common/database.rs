@@ -4,8 +4,8 @@ use std::time::Duration;
 use secrecy::{ExposeSecret, Secret};
 use serde::Deserialize;
 use serde_with::serde_as;
-use sqlx::pool::PoolOptions;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions, PgSslMode};
+use url::Url;
 
 #[serde_as]
 #[derive(Clone, Deserialize)]
@@ -38,6 +38,18 @@ pub struct DatabaseSettings {
 }
 
 impl DatabaseSettings {
+    pub fn database_url(&self) -> Result<Url, url::ParseError> {
+        let rep = format!(
+            "postgres://{db_user}:{db_password}@{host}:{port}/{db_name}",
+            db_user = self.username,
+            db_password = self.password.expose_secret(),
+            host = self.host,
+            port = self.port,
+            db_name = self.database_name,
+        );
+        Url::parse(rep.as_str())
+    }
+
     pub fn pg_pool_options(&self) -> PgPoolOptions {
         let mut options = PgPoolOptions::new()
             .max_lifetime(self.max_lifetime)
@@ -140,7 +152,7 @@ mod tests {
             |database_name: db_name
             |require_ssl: true
             |max_connections: 10
-            |idle_timeout_secss: 180
+            |idle_timeout_secs: 180
             |"##
         .trim_margin()
         .unwrap();
