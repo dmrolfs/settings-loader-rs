@@ -5,7 +5,6 @@ use secrecy::{ExposeSecret, Secret};
 use serde::Deserialize;
 use serde_with::serde_as;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions, PgSslMode};
-use url::Url;
 
 #[serde_as]
 #[derive(Clone, Deserialize)]
@@ -38,8 +37,8 @@ pub struct DatabaseSettings {
 }
 
 impl DatabaseSettings {
-    pub fn database_url(&self) -> Result<Url, url::ParseError> {
-        let rep = format!(
+    pub fn connection_string(&self) -> Secret<String> {
+        let connection = format!(
             "postgres://{db_user}:{db_password}@{host}:{port}/{db_name}",
             db_user = self.username,
             db_password = self.password.expose_secret(),
@@ -47,7 +46,8 @@ impl DatabaseSettings {
             port = self.port,
             db_name = self.database_name,
         );
-        Url::parse(rep.as_str())
+
+        Secret::new(connection)
     }
 
     pub fn pg_pool_options(&self) -> PgPoolOptions {
@@ -113,6 +113,7 @@ impl PartialEq for DatabaseSettings {
             && self.password.expose_secret() == other.password.expose_secret()
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
