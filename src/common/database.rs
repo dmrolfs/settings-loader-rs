@@ -31,6 +31,10 @@ pub struct DatabaseSettings {
     #[serde_as(as = "Option<serde_with::DurationSeconds<u64>>")]
     pub max_lifetime: Option<Duration>,
 
+    #[serde(default, alias = "acquire_timeout_secs")]
+    #[serde_as(as = "Option<serde_with::DurationSeconds<u64>>")]
+    pub acquire_timeout: Option<Duration>,
+
     #[serde(default, alias = "idle_timeout_secs")]
     #[serde_as(as = "Option<serde_with::DurationSeconds<u64>>")]
     pub idle_timeout: Option<Duration>,
@@ -54,6 +58,10 @@ impl DatabaseSettings {
         let mut options = PgPoolOptions::new()
             .max_lifetime(self.max_lifetime)
             .idle_timeout(self.idle_timeout);
+
+        if let Some(acquire) = self.acquire_timeout {
+            options = options.acquire_timeout(acquire);
+        }
 
         if let Some(min) = self.min_connections {
             options = options.min_connections(min);
@@ -94,6 +102,7 @@ impl fmt::Debug for DatabaseSettings {
             .field("min_connections", &self.min_connections)
             .field("max_connections", &self.max_connections)
             .field("max_lifetime", &self.max_lifetime)
+            .field("acquire_timeout", &self.acquire_timeout)
             .field("idle_timeout", &self.idle_timeout)
             .finish()
     }
@@ -109,6 +118,7 @@ impl PartialEq for DatabaseSettings {
             && self.min_connections == other.min_connections
             && self.max_connections == other.max_connections
             && self.max_lifetime == other.max_lifetime
+            && self.acquire_timeout == other.acquire_timeout
             && self.idle_timeout == other.idle_timeout
             && self.password.expose_secret() == other.password.expose_secret()
     }
@@ -133,13 +143,14 @@ mod tests {
             min_connections: None,
             max_connections: None,
             max_lifetime: None,
+            acquire_timeout: None,
             idle_timeout: None,
         };
 
         let actual = format!("{:?}", settings);
         assert_eq!(
             actual,
-            r##"DatabaseSettings { username: "Billy", password: Secret([REDACTED alloc::string::String]), host: "localhost", port: 1234, database_name: "db_name", require_ssl: true, min_connections: None, max_connections: None, max_lifetime: None, idle_timeout: None }"##
+            r##"DatabaseSettings { username: "Billy", password: Secret([REDACTED alloc::string::String]), host: "localhost", port: 1234, database_name: "db_name", require_ssl: true, min_connections: None, max_connections: None, max_lifetime: None, acquire_timeout: None, idle_timeout: None }"##
         )
     }
 
@@ -153,6 +164,7 @@ mod tests {
             |database_name: db_name
             |require_ssl: true
             |max_connections: 10
+            |acquire_timeout_secs: 5
             |idle_timeout_secs: 180
             |"##
         .trim_margin()
@@ -167,6 +179,7 @@ mod tests {
         assert_none!(from_yaml.min_connections);
         assert_eq!(assert_some!(from_yaml.max_connections), 10);
         assert_none!(from_yaml.max_lifetime);
+        assert_eq!(assert_some!(from_yaml.acquire_timeout), Duration::from_secs(5));
         assert_eq!(assert_some!(from_yaml.idle_timeout), Duration::from_secs(180));
     }
 }
