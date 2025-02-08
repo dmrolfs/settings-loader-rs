@@ -26,19 +26,91 @@ mod tracing;
 
 const APP_ENVIRONMENT: &str = "APP_ENVIRONMENT";
 
+
+/// Defines the contract for specifying how configuration settings are loaded.
+///
+/// The `LoadingOptions` trait provides a flexible way to define where and how configuration
+/// settings should be retrieved. It enables applications to specify explicit configuration files,
+/// secrets files, search paths, and environment overrides, ensuring that configurations can be
+/// dynamically loaded from various sources.
+///
+/// The `SettingsLoader::load()` function serves as the primary driver of the settings loading
+/// process, but it relies on `LoadingOptions` to determine the details of where and how to fetch
+/// configuration values.
+///
+/// Implementing this trait allows users to:
+/// - Specify an explicit configuration file.
+/// - Define the location of a secrets file.
+/// - Configure search paths for implicit configuration loading.
+/// - Apply additional override mechanisms.
+/// - Resolve the active environment.
+///
+/// ## Usage Example
+///
+/// ```rust,no_run
+/// use std::path::PathBuf;
+/// use settings_loader::{Environment, LoadingOptions, SettingsError};
+///
+/// struct CliOptions {
+///     config: Option<PathBuf>,
+///     secrets: Option<PathBuf>,
+///     environment: Option<Environment>,
+/// }
+///
+/// impl LoadingOptions for CliOptions {
+///     type Error = SettingsError;
+///
+///     fn config_path(&self) -> Option<PathBuf> {
+///         self.config.clone()
+///     }
+///
+///     fn secrets_path(&self) -> Option<PathBuf> {
+///         self.secrets.clone()
+///     }
+///
+///     fn implicit_search_paths(&self) -> Vec<PathBuf> {
+///         vec![PathBuf::from("./config")]
+///     }
+/// }
+/// ```
 pub trait LoadingOptions: Sized {
+    /// The error type that can be returned from configuration operations.
     type Error: std::error::Error + From<error::SettingsError> + Sync + Send + 'static;
 
+    /// Returns the path to an explicit configuration file, if provided.
+    ///
+    /// If a configuration file is specified via the command-line or other means,
+    /// this function should return its path. If `None` is returned, the system will
+    /// attempt to infer configuration from default locations.
     fn config_path(&self) -> Option<PathBuf>;
 
+    /// Returns the path to a secrets file, if specified.
+    ///
+    /// This is useful for separating sensitive credentials (e.g., database passwords)
+    /// from the main configuration files.
     fn secrets_path(&self) -> Option<PathBuf>;
 
+    /// Returns a list of directories to search for configuration files.
+    ///
+    /// If an explicit configuration file is not provided, this function determines
+    /// which directories will be scanned for inferred configuration files.
     fn implicit_search_paths(&self) -> Vec<PathBuf>;
 
+    /// Allows customization of the configuration before finalization.
+    ///
+    /// This method provides an opportunity to apply additional runtime overrides,
+    /// such as modifying individual settings dynamically.
+    ///
+    /// The default implementation returns the configuration unchanged.
     fn load_overrides(&self, config: ConfigBuilder<DefaultState>) -> Result<ConfigBuilder<DefaultState>, Self::Error> {
         Ok(config)
     }
 
+    /// Determines the active environment for configuration resolution.
+    ///
+    /// This function checks for an explicit environment override, falling back to
+    /// an environment variable lookup (`APP_ENVIRONMENT`). If no value is found,
+    /// it logs a warning and defaults to `None`.
     fn environment(&self) -> Option<Environment> {
         let env: Option<Environment> = self
             .environment_override()
@@ -62,10 +134,17 @@ pub trait LoadingOptions: Sized {
         env
     }
 
+    /// Provides an optional explicit override for the environment.
+    ///
+    /// This can be used to manually specify the environment without relying
+    /// on environment variables.
     fn environment_override(&self) -> Option<Environment> {
         None
     }
 
+    /// Returns the environment variable key used to determine the application environment.
+    ///
+    /// Defaults to `"APP_ENVIRONMENT"`.
     fn env_app_environment() -> &'static str {
         APP_ENVIRONMENT
     }

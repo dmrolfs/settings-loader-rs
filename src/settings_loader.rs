@@ -10,31 +10,104 @@ use crate::{Environment, LoadingOptions, SettingsError};
 
 type ConfigFile = config::File<config::FileSourceFile, config::FileFormat>;
 
+/// The main driver for loading application settings from multiple sources.
+///
+/// The `SettingsLoader` trait defines the core logic for composing configuration
+/// sources into a unified representation for an application. It integrates settings
+/// from configuration files, environment variables, secrets files, and command-line
+/// arguments.
+///
+/// This trait is typically implemented for a settings structure that represents
+/// the application's full configuration. The `load()` function orchestrates the
+/// loading process, using `LoadingOptions` to determine available sources and
+/// their precedence.
+///
+/// # Configuration Sources
+///
+/// The `SettingsLoader` trait loads settings from multiple sources, in the following
+/// order of precedence (highest to lowest):
+///
+/// 1. **CLI Option Overrides** – Explicit settings provided via command-line arguments.
+/// 2. **Environment Variables** – Overrides defined in the system environment.
+/// 3. **Secrets File** – A dedicated configuration file for storing sensitive values.
+/// 4. **Explicit Configuration File** – A user-defined settings file.
+/// 5. **Implicit Configuration Files** – Default configurations inferred based on environment.
+///
+/// # Example Usage
+///
+/// ```rust,ignore
+/// use serde::Deserialize;
+/// use settings_loader::SettingsLoader;
+///
+/// #[derive(Debug, Deserialize)]
+/// struct Settings {
+///     pub http_api: HttpApiSettings,
+///     pub database: DatabaseSettings,
+/// }
+///
+/// impl SettingsLoader for Settings {
+///     type Options = CliOptions;
+/// }
+///
+/// let options = CliOptions::parse();
+/// let settings = Settings::load(&options).expect("Failed to load settings");
+/// println!("{:?}", settings);
+/// ```
+///
 pub trait SettingsLoader: Debug + Sized {
+    /// The options type that specifies how settings are loaded.
     type Options: LoadingOptions + Debug;
 
+    /// Returns the default directory where configuration resources are stored.
+    ///
+    /// By default, this function returns `"resources"`. Implementations may override this method
+    /// to provide an application-specific configuration directory.
     fn resources_home() -> PathBuf {
         PathBuf::from("resources")
     }
 
+    /// Returns the base name for the application's primary configuration file.
+    ///
+    /// Defaults to `"application"`, meaning configuration files are expected to follow a naming
+    /// pattern like `application.yaml`, `application.json`, etc.
     fn app_config_basename() -> &'static str {
         "application"
     }
 
+    /// Returns the prefix used for environment variable-based configuration.
+    ///
+    /// Defaults to `"app"`, meaning environment variables should be prefixed with `APP_`
+    /// (e.g., `APP_DATABASE_HOST`).
     fn environment_prefix() -> &'static str {
         "app"
     }
+
+    /// Returns the separator used in environment variable keys.
+    ///
+    /// Defaults to `"__"`, meaning nested settings should be represented as
+    /// `APP_DATABASE__HOST` instead of `APP_DATABASE_HOST`.
     fn environment_path_separator() -> &'static str {
         "__"
     }
 
-    /// Load settings by composing a set of sources.
-    /// Order of precedence is:
-    /// 1. CLI option overrides,
-    /// 2. environment variables,
-    /// 3. secrets file
-    /// 4. explicit application configuration file or implicitly loaded application configuration
-    ///    with environment file overrides.
+    /// Loads application settings by composing multiple configuration sources.
+    ///
+    /// This function orchestrates the loading process, combining various sources
+    /// in a defined order of precedence:
+    ///     1. CLI option overrides,
+    ///     2. environment variables,
+    ///     3. secrets file
+    ///     4. explicit application configuration file or implicitly loaded application
+    ///        configuration with environment file overrides.
+    ///
+    /// If an explicit configuration file is provided via CLI options, it is loaded directly.
+    /// Otherwise, implicit search paths and environment-based configurations are used.
+    ///
+    /// # Errors
+    /// Returns a `SettingsError` if any part of the configuration loading process fails.
+    ///
+    /// # Instrumentation
+    /// This function includes `tracing::instrument` logging to track the settings loading process.
     #[tracing::instrument(level = "info")]
     fn load(options: &Self::Options) -> Result<Self, SettingsError>
     where
@@ -87,11 +160,15 @@ pub trait SettingsLoader: Debug + Sized {
         Ok(settings)
     }
 
+    /// Returns the default path to the resources directory.
     fn default_resource_path() -> PathBuf {
         let current_dir = std::env::current_dir().expect("failed to get current directory");
         current_dir.join(Self::resources_home())
     }
 
+    /// Constructs a glob walker for searching configuration files in a directory.
+    ///
+    /// If the walker fails to initialize, an error is logged, and `None` is returned.
     fn make_glob_walker(base_dir: impl AsRef<Path>, pattern: impl AsRef<str>) -> Option<globwalk::GlobWalker> {
         globwalk::GlobWalkerBuilder::new(base_dir.as_ref(), pattern.as_ref())
             .build()
@@ -106,7 +183,9 @@ pub trait SettingsLoader: Debug + Sized {
             .ok()
     }
 
-    /// returns the first settings resource file found in the list of resource directories.
+    /// Searches for a configuration resource file in the given directories.
+    ///
+    /// Returns the first directory where the resource file is found.
     fn find_resource_dir(resource: &str, dirs: &[PathBuf]) -> Option<PathBuf> {
         for d in dirs.iter() {
             let walker = Self::make_glob_walker(d, format!("{}.*", resource));
@@ -133,10 +212,17 @@ pub trait SettingsLoader: Debug + Sized {
         None
     }
 
+    /// Creates a configuration source for an explicitly specified settings file.
+    ///
+    /// This method is used when the user provides a configuration file path via CLI.
     fn make_explicit_config_source(path: &Path) -> ConfigFile {
         ConfigFile::from(path).required(true)
     }
 
+    /// Creates a configuration source for implicitly loaded application settings.
+    ///
+    /// The source file is determined by searching the provided directories for a file
+    /// matching the `app_config_basename()` (e.g., `application.yaml`).
     fn make_implicit_config_source(basename: &str, dir_paths: &[PathBuf]) -> ConfigFile {
         let source_dir = Self::find_resource_dir(basename, dir_paths)
             // .cloned()
@@ -146,6 +232,10 @@ pub trait SettingsLoader: Debug + Sized {
         ConfigFile::from(path).required(true)
     }
 
+    /// Generates a list of environment-specific configuration sources.
+    ///
+    /// This function looks for files named after the environment (e.g., `production.yaml`)
+    /// in the provided search directories.
     fn make_environment_sources(environment: Environment, dir_paths: &[PathBuf]) -> Vec<ConfigFile> {
         dir_paths
             .iter()
@@ -154,12 +244,16 @@ pub trait SettingsLoader: Debug + Sized {
             .collect()
     }
 
+    /// Creates a configuration source for an environment-specific settings file.
     fn make_app_environment_source(environment: &Environment, resources: &Path) -> ConfigFile {
         tracing::info!("creating application {environment} settings source at {:?}", resources);
         let env_path = resources.join(environment.as_ref());
         ConfigFile::from(env_path).required(false)
     }
 
+    // Creates a configuration source for a secrets file.
+    ///
+    /// The secrets file contains sensitive credentials such as database passwords.
     fn make_secrets_source(secrets_path: &Path) -> ConfigFile {
         if secrets_path.exists() {
             tracing::info!("adding secrets override configuration source at {:?}", secrets_path);
@@ -169,6 +263,10 @@ pub trait SettingsLoader: Debug + Sized {
         ConfigFile::from(secrets_path).required(true)
     }
 
+    /// Creates a configuration source that pulls settings from environment variables.
+    ///
+    /// The environment variables must follow the prefix and separator rules defined
+    /// by `environment_prefix()` and `environment_path_separator()`.
     fn make_environment_variables_source() -> config::Environment {
         let prefix = Self::environment_prefix();
         let delim = Self::environment_path_separator();
@@ -177,6 +275,7 @@ pub trait SettingsLoader: Debug + Sized {
         config_env
     }
 
+    /// Adds an environment-specific configuration source to the settings builder.
     #[tracing::instrument(level = "info", skip(config))]
     fn add_app_environment_source(
         config: ConfigBuilder<DefaultState>, env: Environment, resources_path: &Path,
@@ -186,6 +285,7 @@ pub trait SettingsLoader: Debug + Sized {
         config.add_source(config::File::from(env_config_path).required(false))
     }
 
+    /// Adds a secrets file source to the settings builder.
     #[tracing::instrument(level = "info", skip(config))]
     fn add_secrets_source(
         config: ConfigBuilder<DefaultState>, secrets_path: Option<PathBuf>,
@@ -207,6 +307,7 @@ pub trait SettingsLoader: Debug + Sized {
         }
     }
 
+    /// Adds environment variables as a source to the settings builder.
     #[tracing::instrument(level = "info", skip(config))]
     fn add_environment_variables_source(config: ConfigBuilder<DefaultState>) -> ConfigBuilder<DefaultState> {
         let config_env =
