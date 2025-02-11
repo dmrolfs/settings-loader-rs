@@ -151,7 +151,7 @@ cargo run -- --search-path "./config:./resources"
 Here’s an example of how an application can use `settings-loader-rs` to load configurations dynamically based on 
 CLI options:
 
-```rust
+```rust, ignore
 use anyhow::anyhow;
 use clap::Parser;
 use settings_loader::{LoadingOptions, SettingsLoader};
