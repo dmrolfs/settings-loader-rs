@@ -211,7 +211,7 @@ impl PartialEq for DatabaseSettings {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use claim::*;
+    use assert_matches2::{assert_let, assert_matches};
     use pretty_assertions::assert_eq;
     use trim_margin::MarginTrimmable;
 
@@ -219,7 +219,7 @@ mod tests {
     fn test_password_redaction() {
         let settings = DatabaseSettings {
             username: "Billy".to_string(),
-            password: Secret::new("my-secret".to_string()),
+            password: SecretString::from("my-secret"),
             port: 1234,
             host: "localhost".to_string(),
             database_name: "db_name".to_string(),
@@ -234,7 +234,7 @@ mod tests {
         let actual = format!("{:?}", settings);
         assert_eq!(
             actual,
-            r##"DatabaseSettings { username: "Billy", password: Secret([REDACTED alloc::string::String]), host: "localhost", port: 1234, database_name: "db_name", require_ssl: true, min_connections: None, max_connections: None, max_lifetime: None, acquire_timeout: None, idle_timeout: None }"##
+            r##"DatabaseSettings { username: "Billy", password: SecretBox<str>([REDACTED]), host: "localhost", port: 1234, database_name: "db_name", require_ssl: true, min_connections: None, max_connections: None, max_lifetime: None, acquire_timeout: None, idle_timeout: None }"##
         )
     }
 
@@ -254,16 +254,19 @@ mod tests {
         .trim_margin()
         .unwrap();
 
-        let from_yaml: DatabaseSettings = assert_ok!(serde_yaml::from_str(yaml.as_str()));
+        assert_let!(Ok(from_yaml) = serde_yaml::from_str::<DatabaseSettings>(yaml.as_str()));
         assert_eq!(from_yaml.username, "Billy".to_string(),);
         assert_eq!(from_yaml.port, 1234,);
         assert_eq!(from_yaml.host, "localhost".to_string(),);
         assert_eq!(from_yaml.database_name, "db_name".to_string(),);
         assert_eq!(from_yaml.require_ssl, true,);
-        assert_none!(from_yaml.min_connections);
-        assert_eq!(assert_some!(from_yaml.max_connections), 10);
-        assert_none!(from_yaml.max_lifetime);
-        assert_eq!(assert_some!(from_yaml.acquire_timeout), Duration::from_secs(5));
-        assert_eq!(assert_some!(from_yaml.idle_timeout), Duration::from_secs(180));
+        assert_matches!(from_yaml.min_connections, None);
+        assert_matches!(from_yaml.max_connections, Some(actual_max));
+        assert_eq!(actual_max, 10);
+        assert_matches!(from_yaml.max_lifetime, None);
+        assert_let!(Some(actual_aquire_timeout) = from_yaml.acquire_timeout);
+        assert_eq!(actual_aquire_timeout, Duration::from_secs(5));
+        assert_let!(Some(actual_idle_timeout) = from_yaml.idle_timeout);
+        assert_eq!(actual_idle_timeout, Duration::from_secs(180));
     }
 }

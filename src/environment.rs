@@ -54,7 +54,7 @@ impl From<&str> for Environment {
 
 #[cfg(test)]
 mod tests {
-    use claim::*;
+    use assert_matches2::{assert_let, assert_matches};
     use pretty_assertions::assert_eq;
 
     use super::*;
@@ -79,20 +79,23 @@ mod tests {
 
     #[test]
     fn test_try_fromstr() {
-        assert_eq!(assert_ok!(Environment::from_str("local")), LOCAL.clone());
-        assert_eq!(
-            assert_ok!(Environment::from_str("LOCAL")),
-            assert_ok!(Environment::from_str("l-o-c-a-l"))
-        );
-        assert_eq!(assert_ok!(Environment::from_str("PrOdUcTiOn")), "pr-od-uc-ti-on".into());
-        assert_eq!(assert_ok!(Environment::from_str("lOcAl")), "l-oc-al".into());
-        assert_ok!(Environment::from_str("foobar"));
-        assert_eq!(assert_ok!(Environment::from_str("  local")), LOCAL.clone());
-        assert_eq!(assert_ok!(Environment::from_str("local ")), LOCAL.clone());
-        assert_eq!(
-            assert_ok!(Environment::from_str("Int-1AwsEuWest-1Dev")),
-            Environment("int-1-aws-eu-west-1-dev".to_string()),
-        );
+        assert_let!(Ok(local_0) = Environment::from_str("local"));
+        assert_eq!(local_0, LOCAL.clone());
+        assert_let!(Ok(local_1) = Environment::from_str("LOCAL"));
+        assert_let!(Ok(local_2) = Environment::from_str("l-o-c-a-l"));
+        assert_eq!(local_1, local_2);
+        assert_let!(Ok(local_3) = Environment::from_str("lOcAl"));
+        assert_eq!(local_3, "l-oc-al".into());
+        assert_let!(Ok(local_4) = Environment::from_str("  local"));
+        assert_eq!(local_4, LOCAL.clone());
+        assert_let!(Ok(local_5) = Environment::from_str("local "));
+        assert_eq!(local_5, LOCAL.clone());
+
+        assert_let!(Ok(prod_0) = Environment::from_str("PrOdUcTiOn"));
+        assert_eq!(prod_0, "pr-od-uc-ti-on".into());
+        assert_matches!(Environment::from_str("foobar"), Ok(_));
+        assert_let!(Ok(env_0) = Environment::from_str("Int-1AwsEuWest-1Dev"));
+        assert_eq!(env_0, Environment("int-1-aws-eu-west-1-dev".to_string()));
         let actual: Environment = "PRODUCTION".into();
         assert_eq!(actual, Environment("p-r-o-d-u-c-t-i-o-n".to_string()));
         let staging: String = "StagingAwsUsWest2".to_string();

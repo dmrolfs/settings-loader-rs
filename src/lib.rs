@@ -75,6 +75,8 @@ pub mod environment;
 pub mod error;
 mod internals;
 pub mod settings_loader;
+
+#[cfg(test)]
 mod tracing;
 
 const APP_ENVIRONMENT: &str = "APP_ENVIRONMENT";

@@ -321,7 +321,7 @@ pub trait SettingsLoader: Debug + Sized {
 mod tests {
     use super::*;
     use crate::{environment, NoOptions, APP_ENVIRONMENT};
-    use claim::{assert_err, assert_ok};
+    use assert_matches2::{assert_let, assert_matches};
     use config::{Config, FileFormat};
     use pretty_assertions::assert_eq;
     use serde::{Deserialize, Serialize};
@@ -411,8 +411,8 @@ mod tests {
                 let main_span = tracing::info_span!("test_load_string_settings");
                 let _ = main_span.enter();
 
-                assert_err!(std::env::var(APP_ENVIRONMENT));
-                tracing::info!("envar: {} = {:?}", APP_ENVIRONMENT, std::env::var(APP_ENVIRONMENT));
+                assert_matches!(env::var(APP_ENVIRONMENT), Err(_));
+                tracing::info!("envar: {} = {:?}", APP_ENVIRONMENT, env::var(APP_ENVIRONMENT));
 
                 let config = Config::builder().add_source(config::File::from_str(
                     r###"
@@ -435,12 +435,12 @@ mod tests {
                 ));
 
                 let options = TestOptions("bar".to_string(), Some(environment::LOCAL.clone()));
-                let config = assert_ok!(options.load_overrides(config));
 
-                let config = assert_ok!(config.build());
+                assert_let!(Ok(config) = options.load_overrides(config));
+                assert_let!(Ok(config) = config.build());
                 tracing::info!(?config, "eligibility config loaded.");
 
-                let actual: TestSettings = assert_ok!(config.try_deserialize());
+                assert_let!(Ok(actual) = config.try_deserialize::<TestSettings>());
                 assert_eq!(
                     actual,
                     TestSettings {
@@ -482,10 +482,11 @@ mod tests {
                 let main_span = tracing::info_span!("test_settings_load_w_options");
                 let _ = main_span.enter();
 
-                assert_eq!(assert_ok!(std::env::var(APP_ENVIRONMENT)), "local");
+                assert_matches!(env::var(APP_ENVIRONMENT), Ok(actual));
+                assert_eq!(actual, "local");
                 tracing::info!("envar: {} = {:?}", APP_ENVIRONMENT, std::env::var(APP_ENVIRONMENT));
 
-                let actual = assert_ok!(TestSettings::load(&TestOptions("zed".to_string(), None)));
+                assert_let!(Ok(actual) = TestSettings::load(&TestOptions("zed".to_string(), None)));
 
                 let expected: TestSettings = TestSettings {
                     application: TestHttpSettings {
@@ -522,10 +523,11 @@ mod tests {
             "test_settings_load_w_no_options",
             vec![(APP_ENVIRONMENT, Some("production"))],
             || {
-                assert_eq!(assert_ok!(std::env::var(APP_ENVIRONMENT)), "production");
+                assert_matches!(env::var(APP_ENVIRONMENT), Ok(actual));
+                assert_eq!(actual, "production");
                 tracing::info!("envar: {} = {:?}", APP_ENVIRONMENT, std::env::var(APP_ENVIRONMENT));
 
-                let actual = assert_ok!(TestSettingsNoOpts::load(&()));
+                assert_let!(Ok(actual) = TestSettingsNoOpts::load(&()));
 
                 let expected = TestSettingsNoOpts {
                     application: TestHttpSettings {
@@ -562,10 +564,11 @@ mod tests {
             "test_settings_load_w_override",
             vec![(APP_ENVIRONMENT, Some("production"))],
             || {
-                assert_eq!(assert_ok!(std::env::var(APP_ENVIRONMENT)), "production");
+                assert_matches!(env::var(APP_ENVIRONMENT), Ok(actual));
+                assert_eq!(actual, "production");
                 tracing::info!("envar: {} = {:?}", APP_ENVIRONMENT, std::env::var(APP_ENVIRONMENT));
 
-                let actual = assert_ok!(TestSettings::load(&TestOptions("zed".to_string(), None)));
+                assert_let!(Ok(actual) = TestSettings::load(&TestOptions("zed".to_string(), None)));
 
                 let expected = TestSettings {
                     application: TestHttpSettings {
@@ -601,7 +604,7 @@ mod tests {
 
     use crate::tracing::TEST_TRACING;
 
-    static SERIAL_TEST: Lazy<Mutex<()>> = Lazy::new(|| Default::default());
+    static SERIAL_TEST: Lazy<Mutex<()>> = Lazy::new(Default::default);
 
     /// Sets environment variables to the given value for the duration of the closure.
     /// Restores the previous values when the closure completes or panics, before unwinding the
