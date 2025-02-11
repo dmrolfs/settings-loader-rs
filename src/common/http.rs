@@ -1,21 +1,102 @@
+//! Provides HTTP server configuration settings.
+//!
+//! This module defines the [`HttpServerSettings`] struct, which encapsulates
+//! the host and port configuration for an HTTP server.
+//!
+//! # Features
+//! - **Enabled via Cargo feature**: Available only when the `http` feature is enabled.
+//! - **Flexible Address Formatting**: Provides utility methods to construct addresses and URLs.
+//! - **Structured Serialization**: Supports `Serialize` and `Deserialize` for easy configuration management.
+//!
+//! # Example Usage
+//!
+//! ```rust,ignore
+//! use my_crate::http::HttpServerSettings;
+//!
+//! let server_settings = HttpServerSettings {
+//!     host: "127.0.0.1".to_string(),
+//!     port: 8080,
+//! };
+//!
+//! assert_eq!(server_settings.address(), "127.0.0.1:8080");
+//! assert_eq!(server_settings.url("http").unwrap().as_str(), "http://127.0.0.1:8080");
+//! ```
+
 use serde::{Deserialize, Serialize};
 use url::{Host, Url};
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// Represents HTTP server configuration settings.
+///
+/// This struct holds the host and port settings for an HTTP server,
+/// and provides utility methods to format and retrieve URLs.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// let settings = HttpServerSettings {
+///     host: "localhost".to_string(),
+///     port: 8080,
+/// };
+///
+/// assert_eq!(settings.address(), "localhost:8080");
+/// assert_eq!(settings.url("https").unwrap().as_str(), "https://localhost:8080");
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HttpServerSettings {
+    /// The hostname or IP address where the HTTP server will be bound.
     pub host: String,
+
+    /// The port on which the HTTP server will listen.
     pub port: u16,
 }
 
 impl HttpServerSettings {
+    /// Returns the server's address as a `host:port` string.
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// let settings = HttpServerSettings {
+    ///     host: "127.0.0.1".to_string(),
+    ///     port: 8000,
+    /// };
+    /// assert_eq!(settings.address(), "127.0.0.1:8000");
+    /// ```
     pub fn address(&self) -> String {
         format!("{}:{}", self.host, self.port)
     }
 
+    /// Parses the `host` field into a `url::Host` type.
+    ///
+    /// # Errors
+    /// Returns a `url::ParseError` if the host is invalid.
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// let settings = HttpServerSettings {
+    ///     host: "localhost".to_string(),
+    ///     port: 8080,
+    /// };
+    /// assert!(settings.url_host().is_ok());
+    /// ```
     pub fn url_host(&self) -> Result<Host, url::ParseError> {
         Host::parse(self.host.as_str())
     }
 
+    /// Constructs a full URL using the given scheme (e.g., `http` or `https`).
+    ///
+    /// # Errors
+    /// Returns a `url::ParseError` if the URL cannot be constructed.
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// let settings = HttpServerSettings {
+    ///     host: "example.com".to_string(),
+    ///     port: 443,
+    /// };
+    ///
+    /// let url = settings.url("https").unwrap();
+    /// assert_eq!(url.as_str(), "https://example.com:443");
+    /// ```
     pub fn url(&self, scheme: impl Into<String>) -> Result<Url, url::ParseError> {
         let url_rep = format!("{}://{}:{}", scheme.into(), self.host, self.port);
         Url::parse(url_rep.as_str())

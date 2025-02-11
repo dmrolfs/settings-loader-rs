@@ -1,21 +1,74 @@
-#![forbid(unsafe_code)]
-#![warn(
-clippy::cargo,
-// missing_docs,
-clippy::nursery,
-// clippy::pedantic,
-future_incompatible,
-rust_2018_idioms
-)]
+//! A library for managing and loading application settings from multiple sources.
+//!
+//! This library provides functionality to load and merge configuration values from
+//! various sources such as configuration files (JSON, TOML, YAML, HJSON, RON),
+//! environment variables, command-line arguments, and secret management systems.
+//!
+//! # Features
+//! - Supports multiple configuration file formats (JSON, TOML, YAML, HJSON, RON).
+//! - Merges configuration from multiple sources, with precedence rules (CLI > Env Vars > File).
+//! - Strongly typed access to configuration values.
+//! - Easily extendable to add more configuration sources.
+//!
+//! # Usage
+//! ```rust, ignore
+//! use std::path::PathBuf;
+//! use serde::{Serialize, Deserialize};
+//! use clap::Parser;
+//! use settings_loader::{Environment, SettingsLoader, LoadingOptions, SettingsError};
+//! use settings_loader::common::database::DatabaseSettings;
+//!
+//! pub struct ApplicationSettings { ... }
+//!
+//! #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+//! struct MySettings {
+//!     pub application: ApplicationSettings,
+//!     pub database: DatabaseSettings,
+//! }
+//!
+//! impl SettingsLoader for MySettings {
+//!     type Options = CliOptions;
+//!  }
+//!
+//! struct CliOptions {
+//!     config: Option<PathBuf>,
+//!     secrets: Option<PathBuf>,
+//!     environment: Option<Environment>,
+//! }
+//!
+//! impl LoadingOptions for CliOptions {
+//!     type Error = SettingsError;
+//!
+//!     fn config_path(&self) -> Option<PathBuf> {
+//!         self.config.clone()
+//!     }
+//!
+//!     fn secrets_path(&self) -> Option<PathBuf> {
+//!         self.secrets.clone()
+//!     }
+//!
+//!     fn implicit_search_paths(&self) -> Vec<PathBuf> {
+//!         vec![PathBuf::from("./config")]
+//!     }
+//! }
+//!
+//! fn main() -> anyhow::Result<()> {
+//!     ...
+//!     let options = CliOptions::parse()?;
+//!     let settings = MySettings::load(&options)?;
+//!
+//!     // Use settings...
+//! }
+//! ```
 
 use std::path::PathBuf;
 
 use config::builder::DefaultState;
 use config::ConfigBuilder;
+
 pub use environment::Environment;
 pub use error::SettingsError;
-
-pub use crate::settings_loader::SettingsLoader;
+pub use settings_loader::SettingsLoader;
 
 pub mod common;
 pub mod environment;
@@ -25,7 +78,6 @@ pub mod settings_loader;
 mod tracing;
 
 const APP_ENVIRONMENT: &str = "APP_ENVIRONMENT";
-
 
 /// Defines the contract for specifying how configuration settings are loaded.
 ///
