@@ -36,7 +36,7 @@ To use `settings-loader-rs` in your Rust project, add it as a dependency in your
 
 ```toml
 [dependencies]
-settings-loader = "0.1" # Replace with the latest version
+settings-loader = "0.14"
 ```
 
 ## Optional Cargo Features
@@ -48,7 +48,7 @@ settings-loader = "0.1" # Replace with the latest version
 To enable specific features, modify your Cargo.toml:
 ```toml
 [dependencies]
-settings-loader = { version = "0.1", features = ["database", "http"] }
+settings-loader = { version = "0.14", features = ["database", "http"] }
 ```
 
 ## Minimum Rust Version
