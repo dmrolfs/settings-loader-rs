@@ -6,7 +6,9 @@ use config::ConfigBuilder;
 use path_absolutize::*;
 use serde::de::DeserializeOwned;
 
-use crate::{Environment, LoadingOptions, SettingsError};
+use crate::environment::Environment;
+use crate::error::SettingsError;
+use crate::loading_options::LoadingOptions;
 
 type ConfigFile = config::File<config::FileSourceFile, config::FileFormat>;
 
@@ -110,6 +112,41 @@ pub trait SettingsLoader: Debug + Sized {
     /// This function includes `tracing::instrument` logging to track the settings loading process.
     #[tracing::instrument(level = "info")]
     fn load(options: &Self::Options) -> Result<Self, SettingsError>
+    where
+        Self: DeserializeOwned,
+    {
+        let initial_builder = crate::layer::LayerBuilder::new();
+        let builder = options.build_layers(initial_builder);
+
+        if builder.has_layers() {
+            let config_builder = builder.build()?;
+            let config = config_builder.build()?;
+            return config.try_deserialize().map_err(Into::into);
+        }
+
+        Self::load_implicit(options)
+    }
+
+    /// Loads application settings by composing multiple configuration sources.
+    ///
+    /// This function orchestrates the loading process, combining various sources
+    /// in a defined order of precedence:
+    ///     1. CLI option overrides,
+    ///     2. environment variables,
+    ///     3. secrets file
+    ///     4. explicit application configuration file or implicitly loaded application
+    ///        configuration with environment file overrides.
+    ///
+    /// If an explicit configuration file is provided via CLI options, it is loaded directly.
+    /// Otherwise, implicit search paths and environment-based configurations are used.
+    ///
+    /// # Errors
+    /// Returns a `SettingsError` if any part of the configuration loading process fails.
+    ///
+    /// # Instrumentation
+    /// This function includes `tracing::instrument` logging to track the settings loading process.
+    #[tracing::instrument(level = "info")]
+    fn load_implicit(options: &Self::Options) -> Result<Self, SettingsError>
     where
         Self: DeserializeOwned,
     {
@@ -320,7 +357,8 @@ pub trait SettingsLoader: Debug + Sized {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{environment, NoOptions, APP_ENVIRONMENT};
+    use crate::loading_options::APP_ENVIRONMENT;
+    use crate::{environment, NoOptions};
     use assert_matches2::{assert_let, assert_matches};
     use config::{Config, FileFormat};
     use pretty_assertions::assert_eq;

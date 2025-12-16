@@ -25,7 +25,6 @@
 //! use tracing::info;
 //! use crate::tracing::TEST_TRACING;
 //!
-//! #[test]
 //! fn example_test() {
 //!     Lazy::force(&TEST_TRACING); // Ensure tracing is initialized
 //!     info!("This will appear in logs if TEST_LOG is set");

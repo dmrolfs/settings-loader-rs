@@ -10,8 +10,9 @@
 //!
 //! # Example Usage
 //!
-//! ```rust,ignore
-//! use my_crate::http::HttpServerSettings;
+//! ```rust
+//! use settings_loader::common::http::HttpServerSettings; // Corrected import
+//! use url::Url; // Added for Url::parse
 //!
 //! let server_settings = HttpServerSettings {
 //!     host: "127.0.0.1".to_string(),
@@ -19,7 +20,7 @@
 //! };
 //!
 //! assert_eq!(server_settings.address(), "127.0.0.1:8080");
-//! assert_eq!(server_settings.url("http").unwrap().as_str(), "http://127.0.0.1:8080");
+//! assert_eq!(server_settings.url("http").unwrap(), Url::parse("http://127.0.0.1:8080").unwrap()); // Compare Url objects directly
 //! ```
 
 use serde::{Deserialize, Serialize};
@@ -32,14 +33,17 @@ use url::{Host, Url};
 ///
 /// # Example
 ///
-/// ```rust,ignore
+/// ```rust
+/// use settings_loader::common::http::HttpServerSettings; // Added import
+/// use url::Url; // Added for Url::parse
+///
 /// let settings = HttpServerSettings {
 ///     host: "localhost".to_string(),
 ///     port: 8080,
 /// };
 ///
 /// assert_eq!(settings.address(), "localhost:8080");
-/// assert_eq!(settings.url("https").unwrap().as_str(), "https://localhost:8080");
+/// assert_eq!(settings.url("https").unwrap(), Url::parse("https://localhost:8080").unwrap()); // Compare Url objects directly
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HttpServerSettings {
@@ -54,7 +58,8 @@ impl HttpServerSettings {
     /// Returns the server's address as a `host:port` string.
     ///
     /// # Example
-    /// ```rust,ignore
+    /// ```rust
+    /// use settings_loader::common::http::HttpServerSettings; // Added import
     /// let settings = HttpServerSettings {
     ///     host: "127.0.0.1".to_string(),
     ///     port: 8000,
@@ -71,7 +76,9 @@ impl HttpServerSettings {
     /// Returns a `url::ParseError` if the host is invalid.
     ///
     /// # Example
-    /// ```rust,ignore
+    /// ```rust
+    /// use settings_loader::common::http::HttpServerSettings; // Added import
+    /// use url::Host; // Added import
     /// let settings = HttpServerSettings {
     ///     host: "localhost".to_string(),
     ///     port: 8080,
@@ -88,14 +95,16 @@ impl HttpServerSettings {
     /// Returns a `url::ParseError` if the URL cannot be constructed.
     ///
     /// # Example
-    /// ```rust,ignore
+    /// ```rust
+    /// use settings_loader::common::http::HttpServerSettings; // Added import
+    /// use url::Url; // Added import
     /// let settings = HttpServerSettings {
     ///     host: "example.com".to_string(),
     ///     port: 443,
     /// };
     ///
     /// let url = settings.url("https").unwrap();
-    /// assert_eq!(url.as_str(), "https://example.com:443");
+    /// assert_eq!(url, Url::parse("https://example.com:443").unwrap()); // Compare Url objects directly
     /// ```
     pub fn url(&self, scheme: impl Into<String>) -> Result<Url, url::ParseError> {
         let url_rep = format!("{}://{}:{}", scheme.into(), self.host, self.port);
