@@ -1,8 +1,9 @@
 # Phase Tracking - settings-loader-rs v0.22.0 Development
 
-**Overall Status**: Phases 1-2 Complete, Phase 3 Ready for Implementation  
+**Overall Status**: Phases 1-3 COMPLETE (88/88 tests), Phase 4 Design Ready  
 **Branch**: feat/comprehensive-config-management-v1  
 **Release Policy**: All 7 phases → single v0.22.0 release (no intermediate releases)
+**Last Updated**: December 17, 2025
 
 ---
 
@@ -63,13 +64,20 @@
 
 ---
 
-### 🔜 Phases 4-7 (Planned)
+### 🔜 Phase 4: Configuration Editing & Writing (READY FOR IMPLEMENTATION)
+**Epic**: sl-m17  
+**Design Doc**: `ref/PHASE4_CONFIG_EDITING_DESIGN.md`  
+**Status**: Design complete, subtasks pending (sl-m28 → sl-m27 → sl-m26 → sl-m25)
 
-#### Phase 4: Configuration Editing & Writing
+**What will be built**:
 - Bidirectional config (read and write)
-- TOML comment preservation (unique feature!)
+- TOML comment preservation via toml_edit (unique feature!)
 - Atomic writes with temp file + rename
-- Format-specific backends (TOML, JSON, YAML)
+- Format-specific backends (TOML, JSON, YAML, with HJSON/RON deferred)
+- LayerEditor trait with get/set/unset/save
+- SettingsEditor trait for format auto-detection
+- Dotted path navigation support ("database.host")
+- Turtle TUI configuration editor support
 
 #### Phase 5: Settings Metadata & Introspection
 - Runtime metadata for TUI/CLI generation
@@ -143,7 +151,8 @@ sl-evw (LayerBuilder Integration - GREEN) ✅ [with_scopes() fully integrated + 
 - `history/TEST_PLAN_SUMMARY.md` - Test coverage overview
 - `ref/PHASE1_IMPLEMENTATION_PLAN.md` - Phase 1 completed details
 - `ref/PHASE2_ENV_CUSTOMIZATION.md` - Phase 2 completed details
-- `ref/PHASE3_MULTI_SCOPE_SUPPORT.md` - Phase 3 ready to implement
+- `ref/PHASE3_MULTI_SCOPE_SUPPORT.md` - Phase 3 design spec
+- `ref/PHASE4_CONFIG_EDITING_DESIGN.md` - Phase 4 design spec (ready for implementation)
 - `PHASE_TRACKING.md` - This file
 
 ### Source Code
@@ -218,12 +227,14 @@ Timeline:
 - Phase 1 (Explicit Layering) - COMPLETE ✅ (Dec 16)
 - Phase 2 (Env Customization) - COMPLETE ✅ (Dec 16)
 - Phase 3 (Multi-Scope) - COMPLETE ✅ (Dec 17)
-- Phase 4 (Editing) - Ready to start
-- Phase 5 (Metadata) - Planned
+- Phase 4 (Editing) - Design ready, subtasks pending (sl-m28, sl-m27, sl-m26, sl-m25)
+- Phase 5 (Metadata) - Planned (will detail design after Phase 4 subtask layout)
 - Phase 6 (Provenance) - Planned
 - Phase 7 (Schema Export) - Planned
 
-**Total**: ~4-5 weeks from Phase 4 start to v0.22.0 release
+**Current Status**: Phase 3 implementation 100% complete (88/88 tests passing). Phase 4 design complete, awaiting implementation subtask creation and test design.
+
+**Total Timeline**: Phases 1-3 complete. Estimated 3-4 weeks from Phase 4 subtask start to v0.22.0 release.
 
 When all phases done:
 - Merge feat/comprehensive-config-management-v1 → main

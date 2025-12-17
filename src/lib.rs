@@ -77,5 +77,8 @@ pub mod loading_options;
 pub mod scope;
 pub mod settings_loader;
 
+#[cfg(feature = "editor")]
+pub mod editor;
+
 #[cfg(test)]
 mod tracing;
