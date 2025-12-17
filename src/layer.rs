@@ -191,6 +191,45 @@ impl LayerBuilder {
         self
     }
 
+    /// Add multiple scopes to the layer builder using MultiScopeConfig.
+    ///
+    /// Automatically resolves paths for each scope based on platform conventions
+    /// and adds them as Path layers in the specified order. Missing or non-existent
+    /// files are skipped gracefully.
+    ///
+    /// # Arguments
+    ///
+    /// * `scopes` - An iterable of ConfigScope values to load
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use settings_loader::{LayerBuilder, ConfigScope, MultiScopeConfig};
+    ///
+    /// struct AppConfig;
+    ///
+    /// impl LoadingOptions for AppConfig { ... }
+    ///
+    /// impl MultiScopeConfig for AppConfig {
+    ///     const APP_NAME: &'static str = "my-app";
+    ///     // ... other required methods ...
+    /// }
+    ///
+    /// let builder = LayerBuilder::new()
+    ///     .with_scopes::<AppConfig>(AppConfig::default_scopes());
+    /// ```
+    pub fn with_scopes<T: crate::MultiScopeConfig>(
+        mut self,
+        scopes: impl IntoIterator<Item = crate::ConfigScope>,
+    ) -> Self {
+        for scope in scopes {
+            if let Some(path) = T::resolve_path(scope) {
+                self = self.with_path(path);
+            }
+        }
+        self
+    }
+
     /// Returns a slice of all layers added to this builder.
     pub fn layers(&self) -> &[ConfigLayer] {
         &self.layers
