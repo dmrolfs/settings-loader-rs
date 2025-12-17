@@ -6,8 +6,8 @@ representation. The primary goal is to decouple configuration sourcing from the 
 applications to retrieve configuration values seamlessly without concerning themselves with how or where the data 
 originates.
 
-> **Status**: Under active development toward v1.0.0. Currently at v0.15.0. Phase 1 (Explicit Configuration Layering) 
-> being completed for v0.16.0. See [Roadmap](#roadmap) for full vision.
+> **Status**: Under active development. Currently at v0.15.0. Phase 1 (Explicit Configuration Layering) 
+> being completed for v0.16.0. Full 7-phase roadmap planned through v0.22.0. See [Roadmap](#roadmap) for full vision.
 
 # Features
 - **Unified Configuration Management** – SettingsLoader::load() consolidates multiple configuration sources into a single 
@@ -210,12 +210,12 @@ export HTTP_API_PORT=8080
 
 # Roadmap
 
-## Vision: v1.0.0 Release
+## Vision: v0.22.0 Final Release
 
 `settings-loader-rs` is evolving from a read-only configuration loader into a comprehensive configuration management 
-system. The roadmap spans **7 phases** with incremental releases from v0.16.0 to v1.0.0.
+system. The roadmap spans **7 phases** with incremental releases from v0.16.0 through v0.22.0 (all v0.x).
 
-**CRITICAL**: All 7 phases must be completed before v1.0.0 release. No partial releases.
+**CRITICAL**: All 7 phases must be completed before final release (v0.22.0). No partial releases.
 
 ### Phase Progress
 
@@ -227,7 +227,7 @@ system. The roadmap spans **7 phases** with incremental releases from v0.16.0 to
 | 4 | Configuration Editing | v0.19.0 | ⏳ Planned | Weeks 4-5 |
 | 5 | Metadata & Introspection | v0.20.0 | ⏳ Planned | Weeks 6-7 |
 | 6 | Source Provenance | v0.21.0 | ⏳ Planned | Weeks 8-9 |
-| 7 | Schema Export & Documentation | v1.0.0 | ⏳ Planned | Weeks 10-11 |
+| 7 | Schema Export & Documentation | v0.22.0 | ⏳ Planned | Weeks 10-11 |
 
 ### Phase 1: Explicit Configuration Layering (CURRENT)
 
@@ -255,7 +255,7 @@ let settings = MySettings::load(&options)?;
 - All formats supported (YAML, JSON, TOML, HJSON, RON)
 - Tests: 35/35 passing
 
-**Status**: Ready for v0.16.0 release after Gate 3 approval
+**Status**: Ready for v0.16.0 release after Gate 3 approval (final release v0.22.0 after all 7 phases)
 
 ### Future Phases
 
