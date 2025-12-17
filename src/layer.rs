@@ -219,8 +219,7 @@ impl LayerBuilder {
     ///     .with_scopes::<AppConfig>(AppConfig::default_scopes());
     /// ```
     pub fn with_scopes<T: crate::MultiScopeConfig>(
-        mut self,
-        scopes: impl IntoIterator<Item = crate::ConfigScope>,
+        mut self, scopes: impl IntoIterator<Item = crate::ConfigScope>,
     ) -> Self {
         for scope in scopes {
             if let Some(path) = T::resolve_path(scope) {

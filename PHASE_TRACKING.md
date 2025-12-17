@@ -38,21 +38,28 @@
 
 ---
 
-### ✅ Phase 3: Multi-Scope Configuration Support (COMPLETE)
+### 🔄 Phase 3: Multi-Scope Configuration Support (REVISED - TDD RED)
 **Epic**: sl-ozp  
 **Subtasks**: sl-x7d → sl-wcu → sl-4ug → sl-evw  
-**Tests**: 15/15 tests passing (14 original + 1 platform test)  
-**Status**: Ready for Phase 4 ✅
+**Tests**: 20 tests (updated for 6 scopes, TDD RED phase)  
+**Status**: TDD RED phase complete - Tests ready for implementation ✅
 
-**What will be built**:
-- `ConfigScope` enum (System, UserGlobal, ProjectLocal, Runtime)
-- `MultiScopeConfig` trait with path resolution
-- Platform-specific paths (XDG on Linux, ~/Library on macOS, %APPDATA% on Windows)
-- Multi-extension config file discovery (.toml, .yaml, .json, etc.)
+**What will be built** (6 scopes instead of 4):
+- `ConfigScope` enum (Preferences, UserGlobal, ProjectLocal, LocalData, PersistentData, Runtime)
+- `MultiScopeConfig` trait with platform-aware path resolution
+- **Preferences** path via `BaseDirs::preference_dir()`
+- **UserGlobal** path via `ProjectDirs::config_dir()`
+- **ProjectLocal** path (current directory)
+- **LocalData** path via `BaseDirs::data_local_dir()` (machine-local, not synced)
+- **PersistentData** path via `BaseDirs::data_dir()` (cross-machine syncable)
+- **Runtime** (env vars + CLI, not file-based)
+- Multi-extension config file discovery (.toml, .yaml, .json, .hjson, .ron)
 - `with_scopes()` convenience method for LayerBuilder
 - directories crate integration (optional feature flag)
 
-**Why important**: Enables Turtle to use standard configuration locations automatically
+**Design rationale**: Aligns with modern app conventions - preferences, config, data (local vs persistent). All file-based paths use directories crate for platform compliance. No hardcoded `/etc` authz issues.
+
+**Why important**: Enables Turtle to use standard configuration locations automatically + proper data storage separation
 
 ---
 
@@ -114,15 +121,15 @@ sl-dp8 (Trait Enhancement - GREEN)
 sl-xkr (Integration & Validation - GREEN)
 ```
 
-### Phase 3 (sl-ozp) - Complete ✅
+### Phase 3 (sl-ozp) - TDD GREEN In Progress (72 tests passing)
 ```
-sl-x7d (Test Suite - RED) ✅
+sl-x7d (Test Suite - RED) ✅ [20 tests written, all scenarios covered]
   ↓
-sl-wcu (ConfigScope Enum - GREEN) ✅
+sl-wcu (ConfigScope Enum - GREEN) ✅ [ConfigScope enum + find_config_in implemented, 13 tests passing]
   ↓
-sl-4ug (MultiScopeConfig Trait - GREEN) ✅
+sl-4ug (MultiScopeConfig Trait - GREEN) [in progress - implementing path resolution methods]
   ↓
-sl-evw (LayerBuilder Integration - GREEN) ✅
+sl-evw (LayerBuilder Integration - GREEN) [pending]
 ```
 
 ---
@@ -147,7 +154,7 @@ sl-evw (LayerBuilder Integration - GREEN) ✅
 ### Tests
 - `tests/layer_builder_tests.rs` - 27 tests (Phase 1) ✅
 - `tests/phase2_env_customization_tests.rs` - 12 tests (Phase 2) ✅
-- `tests/phase3_multi_scope_tests.rs` - 14 tests (Phase 3) - RED phase
+- `tests/phase3_multi_scope_tests.rs` - 20 tests (Phase 3) - RED phase ✅ [Updated for 6 scopes]
 
 ---
 
@@ -210,13 +217,13 @@ Before merging each phase:
 Timeline:
 - Phase 1 (Explicit Layering) - COMPLETE ✅
 - Phase 2 (Env Customization) - COMPLETE ✅
-- Phase 3 (Multi-Scope) - READY (2-3 days)
+- Phase 3 (Multi-Scope) - TDD RED COMPLETE, Implementation ~2-3 days
 - Phase 4 (Editing) - 1 week
 - Phase 5 (Metadata) - 1-2 weeks
 - Phase 6 (Provenance) - 1 week
 - Phase 7 (Schema Export) - 4-5 days
 
-**Total**: ~5-6 weeks from Phase 3 start to v0.22.0 release
+**Total**: ~5-6 weeks from Phase 3 implementation start to v0.22.0 release
 
 When all phases done:
 - Merge feat/comprehensive-config-management-v1 → main

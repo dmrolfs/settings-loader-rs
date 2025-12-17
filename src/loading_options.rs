@@ -282,37 +282,41 @@ pub trait MultiScopeConfig: LoadingOptions {
         use crate::ConfigScope;
 
         match scope {
-            ConfigScope::System => Self::system_path(),
+            ConfigScope::Preferences => Self::preferences_path(),
             ConfigScope::UserGlobal => Self::user_global_path(),
             ConfigScope::ProjectLocal => Self::project_local_path(),
+            ConfigScope::LocalData => Self::local_data_path(),
+            ConfigScope::PersistentData => Self::persistent_data_path(),
             ConfigScope::Runtime => None,
         }
     }
 
-    /// Resolve the system-wide configuration path.
+    /// Resolve the preferences configuration path.
     ///
-    /// Platform-specific implementations:
-    /// - **Linux**: `/etc/{APP_NAME}/settings.{ext}`
-    /// - **macOS**: `/etc/{APP_NAME}/settings.{ext}`
-    /// - **Windows**: Not typically used for system paths
+    /// Platform-specific implementations using `directories` crate:
+    /// - **Linux**: `~/.config/APP_NAME/settings.{ext}` (or XDG_CONFIG_HOME/APP_NAME)
+    /// - **macOS**: `~/Library/Preferences/APP_NAME/settings.{ext}`
+    /// - **Windows**: `%APPDATA%/APP_NAME/settings.{ext}`
+    ///
+    /// # Requires Feature Flag
+    ///
+    /// This method requires the `multi-scope` feature (which enables the `directories` crate).
     ///
     /// # Returns
     ///
-    /// `Some(PathBuf)` if configuration file exists in system path, `None` otherwise.
-    fn system_path() -> Option<PathBuf> {
-        #[cfg(target_os = "linux")]
-        {
-            let dir = std::path::PathBuf::from("/etc").join(Self::APP_NAME);
-            Self::find_config_in(&dir)
-        }
+    /// `Some(PathBuf)` if configuration file exists in preferences path, `None` otherwise.
+    #[cfg(feature = "multi-scope")]
+    fn preferences_path() -> Option<PathBuf> {
+        use directories::BaseDirs;
 
-        #[cfg(target_os = "macos")]
-        {
-            let dir = std::path::PathBuf::from("/etc").join(Self::APP_NAME);
-            Self::find_config_in(&dir)
-        }
+        let dirs = BaseDirs::new()?;
+        let pref_dir = dirs.preference_dir();
+        let app_dir = pref_dir.join(Self::APP_NAME);
+        Self::find_config_in(&app_dir)
+    }
 
-        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    #[cfg(not(feature = "multi-scope"))]
+    fn preferences_path() -> Option<PathBuf> {
         None
     }
 
@@ -334,11 +338,7 @@ pub trait MultiScopeConfig: LoadingOptions {
     fn user_global_path() -> Option<PathBuf> {
         use directories::ProjectDirs;
 
-        let proj = ProjectDirs::new(
-            Self::ORG_NAME,
-            Self::ORG_NAME,
-            Self::APP_NAME,
-        )?;
+        let proj = ProjectDirs::from(Self::ORG_NAME, Self::ORG_NAME, Self::APP_NAME)?;
         let config_dir = proj.config_dir();
         Self::find_config_in(config_dir)
     }
@@ -362,6 +362,68 @@ pub trait MultiScopeConfig: LoadingOptions {
         Self::find_config_in(&current_dir)
     }
 
+    /// Resolve the local data configuration path.
+    ///
+    /// Platform-specific implementations using `directories` crate:
+    /// - **Linux**: `~/.cache/APP_NAME/` (or XDG_CACHE_HOME/APP_NAME)
+    /// - **macOS**: `~/Library/Caches/ORG_NAME.APP_NAME/`
+    /// - **Windows**: `%LOCALAPPDATA%/ORG_NAME/APP_NAME/`
+    ///
+    /// Use for machine-local data that is not synced across machines.
+    ///
+    /// # Requires Feature Flag
+    ///
+    /// This method requires the `multi-scope` feature (which enables the `directories` crate).
+    ///
+    /// # Returns
+    ///
+    /// `Some(PathBuf)` if configuration file exists in local data path, `None` otherwise.
+    #[cfg(feature = "multi-scope")]
+    fn local_data_path() -> Option<PathBuf> {
+        use directories::BaseDirs;
+
+        let dirs = BaseDirs::new()?;
+        let data_dir = dirs.data_local_dir();
+        let app_dir = data_dir.join(Self::APP_NAME);
+        Self::find_config_in(&app_dir)
+    }
+
+    #[cfg(not(feature = "multi-scope"))]
+    fn local_data_path() -> Option<PathBuf> {
+        None
+    }
+
+    /// Resolve the persistent data configuration path.
+    ///
+    /// Platform-specific implementations using `directories` crate:
+    /// - **Linux**: `~/.local/share/APP_NAME/` (or XDG_DATA_HOME/APP_NAME)
+    /// - **macOS**: `~/Library/Application Support/ORG_NAME.APP_NAME/`
+    /// - **Windows**: `%APPDATA%/ORG_NAME/APP_NAME/`
+    ///
+    /// Use for persistent data that can be synced across machines.
+    ///
+    /// # Requires Feature Flag
+    ///
+    /// This method requires the `multi-scope` feature (which enables the `directories` crate).
+    ///
+    /// # Returns
+    ///
+    /// `Some(PathBuf)` if configuration file exists in persistent data path, `None` otherwise.
+    #[cfg(feature = "multi-scope")]
+    fn persistent_data_path() -> Option<PathBuf> {
+        use directories::BaseDirs;
+
+        let dirs = BaseDirs::new()?;
+        let data_dir = dirs.data_dir();
+        let app_dir = data_dir.join(Self::APP_NAME);
+        Self::find_config_in(&app_dir)
+    }
+
+    #[cfg(not(feature = "multi-scope"))]
+    fn persistent_data_path() -> Option<PathBuf> {
+        None
+    }
+
     /// Search for a configuration file with multiple format extensions.
     ///
     /// This method must be implemented to provide the file discovery logic.
@@ -378,15 +440,18 @@ pub trait MultiScopeConfig: LoadingOptions {
 
     /// Get the list of scopes to load in precedence order.
     ///
-    /// Default order is System → UserGlobal → ProjectLocal (Runtime is handled separately).
+    /// Default order: Preferences → UserGlobal → ProjectLocal → LocalData → PersistentData
+    /// (Runtime is handled separately via environment variables).
     /// Override to customize scope loading order.
     fn default_scopes() -> Vec<crate::ConfigScope> {
         use crate::ConfigScope;
 
         vec![
-            ConfigScope::System,
+            ConfigScope::Preferences,
             ConfigScope::UserGlobal,
             ConfigScope::ProjectLocal,
+            ConfigScope::LocalData,
+            ConfigScope::PersistentData,
         ]
     }
 }
