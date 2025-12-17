@@ -64,7 +64,7 @@
 pub use environment::Environment;
 pub use error::SettingsError;
 pub use layer::{ConfigLayer, LayerBuilder};
-pub use loading_options::{LoadingOptions, NoOptions};
+pub use loading_options::{LoadingOptions, MultiScopeConfig, NoOptions};
 pub use scope::ConfigScope;
 pub use settings_loader::SettingsLoader;
 

@@ -205,6 +205,192 @@ pub trait LoadingOptions: Sized {
     }
 }
 
+/// Trait for multi-scope configuration support with automatic path resolution.
+///
+/// This trait extends `LoadingOptions` to support loading configuration from multiple
+/// scopes (System, UserGlobal, ProjectLocal, Runtime) with automatic, platform-specific
+/// path resolution.
+///
+/// # Scopes
+///
+/// - `System` - Immutable system-wide defaults (platform-specific location)
+/// - `UserGlobal` - User preferences that apply everywhere (platform-specific location)
+/// - `ProjectLocal` - Project-specific overrides (current directory)
+/// - `Runtime` - Dynamic configuration from environment variables and CLI
+///
+/// # Constants
+///
+/// - `APP_NAME` - Required: The application name (e.g., "my-app")
+/// - `ORG_NAME` - Optional: Organization name for platform path resolution
+/// - `CONFIG_BASENAME` - Optional: Base name for config files (default: "settings")
+///
+/// # Platform Path Resolution
+///
+/// UserGlobal paths use platform conventions:
+/// - **Linux**: `~/.config/{APP_NAME}/settings.{ext}` (XDG Base Directory spec)
+/// - **macOS**: `~/Library/Application Support/{APP_NAME}/settings.{ext}`
+/// - **Windows**: `%APPDATA%/{APP_NAME}/settings.{ext}`
+///
+/// # Example
+///
+/// ```ignore
+/// use settings_loader::{LoadingOptions, MultiScopeConfig, ConfigScope};
+/// use std::path::{Path, PathBuf};
+///
+/// struct TurtleOptions;
+///
+/// impl LoadingOptions for TurtleOptions {
+///     type Error = settings_loader::SettingsError;
+///     fn config_path(&self) -> Option<PathBuf> { None }
+///     fn secrets_path(&self) -> Option<PathBuf> { None }
+///     fn implicit_search_paths(&self) -> Vec<PathBuf> { Vec::new() }
+/// }
+///
+/// impl MultiScopeConfig for TurtleOptions {
+///     const APP_NAME: &'static str = "spark-turtle";
+///     const ORG_NAME: &'static str = "spark-turtle";
+///     const CONFIG_BASENAME: &'static str = "settings";
+///
+///     fn find_config_in(dir: &Path) -> Option<PathBuf> {
+///         crate::scope::find_config_in(dir)
+///     }
+/// }
+/// ```
+pub trait MultiScopeConfig: LoadingOptions {
+    /// The application name used for path resolution (e.g., "my-app")
+    const APP_NAME: &'static str;
+
+    /// Optional organization name for platform-specific paths
+    const ORG_NAME: &'static str = "";
+
+    /// Base name for configuration files (default: "settings")
+    const CONFIG_BASENAME: &'static str = "settings";
+
+    /// Resolve a configuration path for the given scope.
+    ///
+    /// Returns the resolved path if the configuration file exists for that scope,
+    /// or `None` if the file doesn't exist or the scope is not file-based (Runtime).
+    ///
+    /// # Default Behavior
+    ///
+    /// The default implementation resolves paths based on scope:
+    /// - `System` - Platform-specific system path
+    /// - `UserGlobal` - Platform-specific user path using `directories` crate
+    /// - `ProjectLocal` - Current directory search
+    /// - `Runtime` - None (not file-based)
+    fn resolve_path(scope: crate::ConfigScope) -> Option<PathBuf> {
+        use crate::ConfigScope;
+
+        match scope {
+            ConfigScope::System => Self::system_path(),
+            ConfigScope::UserGlobal => Self::user_global_path(),
+            ConfigScope::ProjectLocal => Self::project_local_path(),
+            ConfigScope::Runtime => None,
+        }
+    }
+
+    /// Resolve the system-wide configuration path.
+    ///
+    /// Platform-specific implementations:
+    /// - **Linux**: `/etc/{APP_NAME}/settings.{ext}`
+    /// - **macOS**: `/etc/{APP_NAME}/settings.{ext}`
+    /// - **Windows**: Not typically used for system paths
+    ///
+    /// # Returns
+    ///
+    /// `Some(PathBuf)` if configuration file exists in system path, `None` otherwise.
+    fn system_path() -> Option<PathBuf> {
+        #[cfg(target_os = "linux")]
+        {
+            let dir = std::path::PathBuf::from("/etc").join(Self::APP_NAME);
+            Self::find_config_in(&dir)
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            let dir = std::path::PathBuf::from("/etc").join(Self::APP_NAME);
+            Self::find_config_in(&dir)
+        }
+
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+        None
+    }
+
+    /// Resolve the user global configuration path.
+    ///
+    /// Platform-specific implementations:
+    /// - **Linux**: `~/.config/{APP_NAME}/settings.{ext}` (XDG_CONFIG_HOME)
+    /// - **macOS**: `~/Library/Application Support/{APP_NAME}/settings.{ext}`
+    /// - **Windows**: `%APPDATA%/{APP_NAME}/settings.{ext}`
+    ///
+    /// # Requires Feature Flag
+    ///
+    /// This method requires the `multi-scope` feature (which enables the `directories` crate).
+    ///
+    /// # Returns
+    ///
+    /// `Some(PathBuf)` if configuration file exists in user path, `None` otherwise.
+    #[cfg(feature = "multi-scope")]
+    fn user_global_path() -> Option<PathBuf> {
+        use directories::ProjectDirs;
+
+        let proj = ProjectDirs::new(
+            Self::ORG_NAME,
+            Self::ORG_NAME,
+            Self::APP_NAME,
+        )?;
+        let config_dir = proj.config_dir();
+        Self::find_config_in(config_dir)
+    }
+
+    #[cfg(not(feature = "multi-scope"))]
+    fn user_global_path() -> Option<PathBuf> {
+        // Without directories crate, we can't reliably resolve platform paths
+        None
+    }
+
+    /// Resolve the project-local configuration path.
+    ///
+    /// Searches for configuration files in the current directory.
+    /// Files are searched in order of format preference: TOML > YAML > JSON > etc.
+    ///
+    /// # Returns
+    ///
+    /// `Some(PathBuf)` if configuration file exists in current directory, `None` otherwise.
+    fn project_local_path() -> Option<PathBuf> {
+        let current_dir = std::env::current_dir().ok()?;
+        Self::find_config_in(&current_dir)
+    }
+
+    /// Search for a configuration file with multiple format extensions.
+    ///
+    /// This method must be implemented to provide the file discovery logic.
+    /// Most implementations should delegate to `crate::scope::find_config_in()`.
+    ///
+    /// # Arguments
+    ///
+    /// * `dir` - Directory to search for configuration files
+    ///
+    /// # Returns
+    ///
+    /// The first matching configuration file found, or `None` if no file matches.
+    fn find_config_in(dir: &std::path::Path) -> Option<PathBuf>;
+
+    /// Get the list of scopes to load in precedence order.
+    ///
+    /// Default order is System → UserGlobal → ProjectLocal (Runtime is handled separately).
+    /// Override to customize scope loading order.
+    fn default_scopes() -> Vec<crate::ConfigScope> {
+        use crate::ConfigScope;
+
+        vec![
+            ConfigScope::System,
+            ConfigScope::UserGlobal,
+            ConfigScope::ProjectLocal,
+        ]
+    }
+}
+
 pub type NoOptions = ();
 
 impl LoadingOptions for () {
