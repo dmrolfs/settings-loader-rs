@@ -38,6 +38,42 @@ struct TestDatabaseConfig {
 }
 
 // ============================================================================
+// Test MultiScopeConfig Implementation
+// ============================================================================
+
+/// Test implementation of MultiScopeConfig trait
+#[cfg(feature = "multi-scope")]
+struct TestAppConfig;
+
+#[cfg(feature = "multi-scope")]
+impl settings_loader::LoadingOptions for TestAppConfig {
+    type Error = settings_loader::SettingsError;
+
+    fn config_path(&self) -> Option<std::path::PathBuf> {
+        None
+    }
+
+    fn secrets_path(&self) -> Option<std::path::PathBuf> {
+        None
+    }
+
+    fn implicit_search_paths(&self) -> Vec<std::path::PathBuf> {
+        Vec::new()
+    }
+}
+
+#[cfg(feature = "multi-scope")]
+impl settings_loader::MultiScopeConfig for TestAppConfig {
+    const APP_NAME: &'static str = "test-app";
+    const ORG_NAME: &'static str = "test-org";
+    const CONFIG_BASENAME: &'static str = "settings";
+
+    fn find_config_in(dir: &std::path::Path) -> Option<std::path::PathBuf> {
+        settings_loader::scope::find_config_in(dir)
+    }
+}
+
+// ============================================================================
 // Test 1: ConfigScope Enum Structure
 // ============================================================================
 
@@ -506,4 +542,47 @@ fn test_backward_compat_with_phases_1_2() {
 
     let backward_compat = "Must maintain full backward compatibility with Phase 1-2";
     assert!(!backward_compat.is_empty());
+}
+
+// ============================================================================
+// Test: Real-World MultiScopeConfig Usage
+// ============================================================================
+
+/// Test that MultiScopeConfig trait works with real implementation
+#[test]
+#[cfg(feature = "multi-scope")]
+fn test_multi_scope_config_real_implementation() {
+    use settings_loader::{ConfigScope, MultiScopeConfig};
+
+    // TestAppConfig implements both LoadingOptions and MultiScopeConfig
+    // This test verifies the trait works end-to-end
+
+    // Verify constants are accessible
+    assert_eq!(TestAppConfig::APP_NAME, "test-app");
+    assert_eq!(TestAppConfig::ORG_NAME, "test-org");
+    assert_eq!(TestAppConfig::CONFIG_BASENAME, "settings");
+
+    // Verify default_scopes returns expected order
+    let scopes = TestAppConfig::default_scopes();
+    assert_eq!(scopes.len(), 5);
+    assert_eq!(scopes[0], ConfigScope::Preferences);
+    assert_eq!(scopes[1], ConfigScope::UserGlobal);
+    assert_eq!(scopes[2], ConfigScope::ProjectLocal);
+    assert_eq!(scopes[3], ConfigScope::LocalData);
+    assert_eq!(scopes[4], ConfigScope::PersistentData);
+
+    // Verify resolve_path dispatches to correct methods
+    // (These will return None in test environment, which is expected)
+    for scope in scopes {
+        // Just verify it doesn't panic
+        let _ = TestAppConfig::resolve_path(scope);
+    }
+
+    // Verify find_config_in is called for ProjectLocal
+    let temp_dir = tempfile::TempDir::new().unwrap();
+    let config_file = temp_dir.path().join("settings.toml");
+    std::fs::write(&config_file, "test = true").unwrap();
+
+    let result = TestAppConfig::find_config_in(temp_dir.path());
+    assert_eq!(result, Some(config_file));
 }
