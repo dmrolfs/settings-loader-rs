@@ -36,3 +36,4 @@ history/
 # Global agent context (symlink to personal context repo)
 .ai-context
 .DS_Store
+.aider*

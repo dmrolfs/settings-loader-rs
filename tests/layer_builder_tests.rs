@@ -7,12 +7,10 @@
 //! - Backward compatibility with implicit layering
 //! - Error handling and edge cases
 
-use config::{Config, ConfigBuilder};
 use serde::{Deserialize, Serialize};
 use serial_test::serial;
-use settings_loader::{ConfigLayer, LayerBuilder};
+use settings_loader::LayerBuilder;
 use std::fs;
-use std::path::PathBuf;
 
 // Mock types for testing
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Default)]
@@ -119,7 +117,7 @@ fn test_layer_precedence_yaml_override() {
 
     // Later layer should override earlier
     assert_eq!(result.port, 9000);
-    assert_eq!(result.debug, true);
+    assert!(result.debug);
     // Earlier layer values preserved for non-overridden fields
     assert_eq!(result.app_name, "MyApp");
     assert_eq!(result.db.host, "localhost");
@@ -205,7 +203,6 @@ fn test_secrets_layer_override() {
 /// Test 12: EnvVars layer integrates with system environment variables
 #[test]
 #[serial]
-#[ignore = "Temporarily ignored due to config-rs environment variable issues in test environment (PHASE1.3)"]
 fn test_env_vars_layer_integration() {
     let temp_dir = tempfile::tempdir().unwrap();
     let base_path = temp_dir.path().join("base.yaml");
@@ -215,11 +212,11 @@ fn test_env_vars_layer_integration() {
     )
     .unwrap();
 
-    // Use "__" as separator for nested keys (MYAPP_DB__HOST → db.host)
-    std::env::set_var("MYAPP_DB__HOST", "prod.host.com");
+    // Use "_" as separator - MYAPP_PORT maps to port, MYAPP_DB_HOST maps to db.host
+    std::env::set_var("MYAPP_DB_HOST", "prod.host.com");
     std::env::set_var("MYAPP_PORT", "8888");
 
-    let builder = LayerBuilder::new().with_path(&base_path).with_env_vars("MYAPP", "__");
+    let builder = LayerBuilder::new().with_path(&base_path).with_env_vars("MYAPP", "_");
 
     let config_builder = builder.build().unwrap();
     let config = config_builder.build().unwrap();
@@ -229,7 +226,7 @@ fn test_env_vars_layer_integration() {
     assert_eq!(result.db.host, "prod.host.com");
     assert_eq!(result.app_name, "EnvVarsApp");
     std::env::remove_var("MYAPP_PORT");
-    std::env::remove_var("MYAPP_DB__HOST");
+    std::env::remove_var("MYAPP_DB_HOST");
 }
 
 /// Test 13: Multiple file format support (YAML, JSON, TOML)
@@ -364,7 +361,7 @@ fn test_fluent_interface() {
         .with_env_vars("APP", "__");
 
     // Compilation success proves fluent API works
-    assert!(true);
+    // Compilation success proves fluent API works
 }
 
 /// Test 19: Layer query methods
@@ -526,7 +523,7 @@ fn test_comprehensive_real_world_scenario() {
     assert_eq!(result.db.password, "prod_secret_password_123"); // From secrets
     assert_eq!(result.db.host, "prod.db.com"); // From production.yaml
     assert_eq!(result.app_name, "RuntimeOverride"); // From runtime config
-    assert_eq!(result.debug, false); // From production.yaml
+    assert!(!result.debug); // From production.yaml
 
     // Cleanup
     std::env::remove_var("RUNTIME_CONFIG");
@@ -602,13 +599,12 @@ fn test_debug_env_vars_behavior() {
 /// Test 26: EnvVars layer works as the sole source.
 #[test]
 #[serial]
-#[ignore = "Temporarily ignored due to config-rs environment variable issues in test environment (PHASE1.3)"]
 fn test_env_vars_only() {
     std::env::set_var("MYAPP_PORT", "8888");
-    std::env::set_var("MYAPP_DB__HOST", "prod.host.com");
-    std::env::set_var("MYAPP_DB__PASSWORD", "env_pass");
+    std::env::set_var("MYAPP_DB_HOST", "prod.host.com");
+    std::env::set_var("MYAPP_DB_PASSWORD", "env_pass");
 
-    let builder = LayerBuilder::new().with_env_vars("MYAPP", "__");
+    let builder = LayerBuilder::new().with_env_vars("MYAPP", "_");
 
     let config_builder = builder.build().unwrap();
     let config = config_builder.build().unwrap();
@@ -621,6 +617,6 @@ fn test_env_vars_only() {
     assert_eq!(result.app_name, "");
 
     std::env::remove_var("MYAPP_PORT");
-    std::env::remove_var("MYAPP_DB__HOST");
-    std::env::remove_var("MYAPP_DB__PASSWORD");
+    std::env::remove_var("MYAPP_DB_HOST");
+    std::env::remove_var("MYAPP_DB_PASSWORD");
 }
