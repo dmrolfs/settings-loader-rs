@@ -64,10 +64,11 @@
 
 ---
 
-### 🔜 Phase 4: Configuration Editing & Writing (READY FOR IMPLEMENTATION)
+### 🟡 Phase 4: Configuration Editing & Writing (TEST SUITE COMPLETE)
 **Epic**: sl-m17  
 **Design Doc**: `ref/PHASE4_CONFIG_EDITING_DESIGN.md`  
-**Status**: Design complete, subtasks pending (sl-m28 → sl-m27 → sl-m26 → sl-m25)
+**Status**: Test suite complete (sl-m28 ✅), implementation pending (sl-m27 → sl-m26 → sl-m25)
+**Test Status**: RED PHASE - 26/28 passing, 6 failing (expected - awaiting implementation)
 
 **What will be built**:
 - Bidirectional config (read and write)
@@ -232,9 +233,9 @@ Timeline:
 - Phase 6 (Provenance) - Planned
 - Phase 7 (Schema Export) - Planned
 
-**Current Status**: Phase 3 implementation 100% complete (88/88 tests passing). Phase 4 design complete, awaiting implementation subtask creation and test design.
+**Current Status**: Phase 3 implementation 100% complete (88/88 tests passing). Phase 4 test suite complete (28 tests, 26 passing/6 failing in RED phase). Ready for implementation phase.
 
-**Total Timeline**: Phases 1-3 complete. Estimated 3-4 weeks from Phase 4 subtask start to v0.22.0 release.
+**Total Timeline**: Phases 1-3 complete. Phase 4.1 (test suite) complete. Estimated 2-3 weeks from Phase 4.2 start to v0.22.0 release.
 
 When all phases done:
 - Merge feat/comprehensive-config-management-v1 → main
