@@ -333,6 +333,17 @@ rg "PHASE1-" history/
 
 ---
 
+## Code Review & Approval Gates
+
+**⚠️ CRITICAL RULE**: Agent MUST NEVER commit code or close tasks without explicit user review and approval.
+
+- **NO ASSUMPTIONS**: Do not assume user will skip review. User ALWAYS performs code review.
+- **NO AUTO-COMMITS**: Never commit code directly. Present work and wait for approval.
+- **NO AUTO-CLOSURE**: Never close beads tasks without user approval.
+- **ALWAYS STOP**: After implementation, present work for review. Wait for explicit approval before committing.
+
+---
+
 ## Approval Gates for Phase 1
 
 ### Gate 1: Design & Test Review (COMPLETED)
@@ -344,17 +355,17 @@ rg "PHASE1-" history/
 - **Status**: Awaiting **approval to proceed with implementation**
 
 ### Gate 2: Implementation Review (PENDING)
-- [ ] Code review of `src/layer.rs` implementation
-- [ ] Verify all 25 tests pass (green phase)
+- [ ] Code review of implementation
+- [ ] Verify all tests pass
 - [ ] Check clippy warnings (0 required)
 - [ ] Documentation complete and examples work
-- **Action**: Request user approval after implementation complete
+- **⚠️ ACTION**: **STOP after implementation. Present work. Await user approval before committing.**
 
 ### Gate 3: Integration Review (PENDING)
 - [ ] Verify backward compatibility (all existing tests pass)
 - [ ] Performance impact assessment
 - [ ] Feature flag validation (if any)
-- **Action**: Request user approval before releasing v0.16.0
+- **⚠️ ACTION**: **STOP after integration testing. Present work. Await user approval before closing tasks.**
 
 ---
 
