@@ -131,6 +131,71 @@ pub trait LoadingOptions: Sized {
         APP_ENVIRONMENT
     }
 
+    /// Returns the prefix for environment variables.
+    ///
+    /// Default prefix is `"APP"`. Override to customize environment variable naming convention.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use std::path::PathBuf;
+    /// use settings_loader::LoadingOptions;
+    ///
+    /// struct TurtleOptions;
+    ///
+    /// impl LoadingOptions for TurtleOptions {
+    ///     type Error = settings_loader::SettingsError;
+    ///     
+    ///     fn config_path(&self) -> Option<PathBuf> { None }
+    ///     fn secrets_path(&self) -> Option<PathBuf> { None }
+    ///     fn implicit_search_paths(&self) -> Vec<PathBuf> { Vec::new() }
+    ///     
+    ///     fn env_prefix() -> &'static str {
+    ///         "TURTLE"  // Override to use TURTLE__* convention
+    ///     }
+    /// }
+    /// ```
+    fn env_prefix() -> &'static str {
+        "APP"
+    }
+
+    /// Returns the separator for nested environment variable keys.
+    ///
+    /// Default separator is `"__"` (double underscore). Override to customize how nested
+    /// configuration keys map to environment variable names.
+    ///
+    /// # Example
+    ///
+    /// With default separator `"__"`:
+    /// - `APP__DATABASE__HOST` maps to `database.host`
+    ///
+    /// With custom separator `"_"`:
+    /// - `APP_DATABASE_HOST` maps to `database.host`
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use std::path::PathBuf;
+    /// use settings_loader::LoadingOptions;
+    ///
+    /// struct CustomOptions;
+    ///
+    /// impl LoadingOptions for CustomOptions {
+    ///     type Error = settings_loader::SettingsError;
+    ///     
+    ///     fn config_path(&self) -> Option<PathBuf> { None }
+    ///     fn secrets_path(&self) -> Option<PathBuf> { None }
+    ///     fn implicit_search_paths(&self) -> Vec<PathBuf> { Vec::new() }
+    ///     
+    ///     fn env_separator() -> &'static str {
+    ///         "_"  // Override to use single underscore
+    ///     }
+    /// }
+    /// ```
+    fn env_separator() -> &'static str {
+        "__"
+    }
+
     /// Build explicit configuration layers.
     ///
     /// Default implementation returns builder unchanged (backward compatible).

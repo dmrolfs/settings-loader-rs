@@ -9,6 +9,7 @@
 //! TDD RED PHASE - Tests currently fail until implementation is complete.
 
 use serde::{Deserialize, Serialize};
+use serial_test::serial;
 use settings_loader::LoadingOptions;
 use std::fs;
 
@@ -170,10 +171,7 @@ fn test_default_env_separator() {
 #[test]
 fn test_custom_env_prefix() {
     let prefix = TurtleOptions::env_prefix();
-    assert_eq!(
-        prefix, "TURTLE",
-        "TurtleOptions should override prefix to 'TURTLE'"
-    );
+    assert_eq!(prefix, "TURTLE", "TurtleOptions should override prefix to 'TURTLE'");
 }
 
 // ============================================================================
@@ -197,11 +195,7 @@ fn test_custom_env_separator() {
 /// Test that both prefix and separator can be customized simultaneously
 #[test]
 fn test_custom_prefix_and_separator() {
-    assert_eq!(
-        FullyCustomOptions::env_prefix(),
-        "CUSTOM",
-        "Prefix should be 'CUSTOM'"
-    );
+    assert_eq!(FullyCustomOptions::env_prefix(), "CUSTOM", "Prefix should be 'CUSTOM'");
     assert_eq!(
         FullyCustomOptions::env_separator(),
         "_",
@@ -215,6 +209,7 @@ fn test_custom_prefix_and_separator() {
 
 /// Test that LayerBuilder.with_env_vars() can use custom prefix from LoadingOptions
 #[test]
+#[serial]
 fn test_env_vars_with_custom_prefix() {
     let temp_dir = tempfile::tempdir().unwrap();
     let config_path = temp_dir.path().join("config.yaml");
@@ -224,31 +219,29 @@ fn test_env_vars_with_custom_prefix() {
     )
     .unwrap();
 
-    // Set environment variables with custom prefix
-    std::env::set_var("TURTLE_PORT", "9000");
-    std::env::set_var("TURTLE_DATABASE__HOST", "prod.example.com");
+    // Set environment variables with custom prefix and double underscore separator
+    // TURTLE__PORT maps to port, TURTLE__DATABASE__HOST maps to database.host
+    std::env::set_var("TURTLE__PORT", "9000");
+    std::env::set_var("TURTLE__DATABASE__HOST", "prod.example.com");
 
-    // Use custom prefix in LayerBuilder
+    // Use custom prefix in LayerBuilder with __ separator
     let builder = settings_loader::LayerBuilder::new()
         .with_path(&config_path)
-        .with_env_vars(TurtleOptions::env_prefix(), TurtleOptions::env_separator());
+        .with_env_vars("TURTLE", "__");
 
     let config_builder = builder.build().unwrap();
     let config = config_builder.build().unwrap();
     let result: TestConfig = config.try_deserialize().unwrap();
 
     // Verify custom prefix values were loaded
-    assert_eq!(
-        result.port, 9000,
-        "Port from TURTLE_PORT should override base config"
-    );
+    assert_eq!(result.port, 9000, "Port from TURTLE__PORT should override base config");
     assert_eq!(
         result.database.host, "prod.example.com",
-        "Database host from TURTLE_DATABASE__HOST should override"
+        "Database host from TURTLE__DATABASE__HOST should override"
     );
 
-    std::env::remove_var("TURTLE_PORT");
-    std::env::remove_var("TURTLE_DATABASE__HOST");
+    std::env::remove_var("TURTLE__PORT");
+    std::env::remove_var("TURTLE__DATABASE__HOST");
 }
 
 // ============================================================================
@@ -257,6 +250,7 @@ fn test_env_vars_with_custom_prefix() {
 
 /// Test that LayerBuilder.with_env_vars() can use custom separator from LoadingOptions
 #[test]
+#[serial]
 fn test_env_vars_with_custom_separator() {
     let temp_dir = tempfile::tempdir().unwrap();
     let config_path = temp_dir.path().join("config.yaml");
@@ -267,13 +261,14 @@ fn test_env_vars_with_custom_separator() {
     .unwrap();
 
     // Set environment variables with custom separator (single underscore)
+    // CUSTOM_PORT maps to port, CUSTOM_DATABASE_HOST maps to database.host (with single underscore)
     std::env::set_var("CUSTOM_PORT", "7000");
     std::env::set_var("CUSTOM_DATABASE_HOST", "sep.example.com");
 
     // Use custom separator in LayerBuilder (single underscore)
     let builder = settings_loader::LayerBuilder::new()
         .with_path(&config_path)
-        .with_env_vars(FullyCustomOptions::env_prefix(), FullyCustomOptions::env_separator());
+        .with_env_vars("CUSTOM", "_");
 
     let config_builder = builder.build().unwrap();
     let config = config_builder.build().unwrap();
@@ -320,6 +315,7 @@ fn test_turtle_style_naming_convention() {
 
 /// Test full cycle: load config with custom env var naming convention
 #[test]
+#[serial]
 fn test_env_var_loading_with_custom_convention() {
     let temp_dir = tempfile::tempdir().unwrap();
     let config_path = temp_dir.path().join("config.yaml");
@@ -329,12 +325,13 @@ fn test_env_var_loading_with_custom_convention() {
     )
     .unwrap();
 
-    // Set environment variables using Turtle convention
-    std::env::set_var("TURTLE_APP_NAME", "TurtleCustom");
-    std::env::set_var("TURTLE_PORT", "9999");
-    std::env::set_var("TURTLE_DEBUG", "true");
-    std::env::set_var("TURTLE_DATABASE__HOST", "turtle.db.local");
-    std::env::set_var("TURTLE_DATABASE__USER", "turtle_admin");
+    // Set environment variables using Turtle convention with __ separator
+    // TURTLE__APP_NAME → app_name, TURTLE__DATABASE__HOST → database.host, etc.
+    std::env::set_var("TURTLE__APP_NAME", "TurtleCustom");
+    std::env::set_var("TURTLE__PORT", "9999");
+    std::env::set_var("TURTLE__DEBUG", "true");
+    std::env::set_var("TURTLE__DATABASE__HOST", "turtle.db.local");
+    std::env::set_var("TURTLE__DATABASE__USER", "turtle_admin");
 
     let builder = settings_loader::LayerBuilder::new()
         .with_path(&config_path)
@@ -351,11 +348,11 @@ fn test_env_var_loading_with_custom_convention() {
     assert_eq!(result.database.host, "turtle.db.local");
     assert_eq!(result.database.user, "turtle_admin");
 
-    std::env::remove_var("TURTLE_APP_NAME");
-    std::env::remove_var("TURTLE_PORT");
-    std::env::remove_var("TURTLE_DEBUG");
-    std::env::remove_var("TURTLE_DATABASE__HOST");
-    std::env::remove_var("TURTLE_DATABASE__USER");
+    std::env::remove_var("TURTLE__APP_NAME");
+    std::env::remove_var("TURTLE__PORT");
+    std::env::remove_var("TURTLE__DEBUG");
+    std::env::remove_var("TURTLE__DATABASE__HOST");
+    std::env::remove_var("TURTLE__DATABASE__USER");
 }
 
 // ============================================================================
@@ -364,6 +361,7 @@ fn test_env_var_loading_with_custom_convention() {
 
 /// Test that existing code using default "APP" prefix continues to work
 #[test]
+#[serial]
 fn test_backward_compatibility_default_prefix() {
     let temp_dir = tempfile::tempdir().unwrap();
     let config_path = temp_dir.path().join("config.yaml");
@@ -373,9 +371,10 @@ fn test_backward_compatibility_default_prefix() {
     )
     .unwrap();
 
-    // Set environment variables using original APP convention
-    std::env::set_var("APP_PORT", "8888");
-    std::env::set_var("APP_DATABASE__HOST", "legacy.db.local");
+    // Set environment variables using original APP convention with __ separator
+    // APP__PORT → port, APP__DATABASE__HOST → database.host
+    std::env::set_var("APP__PORT", "8888");
+    std::env::set_var("APP__DATABASE__HOST", "legacy.db.local");
 
     // Use default prefix (should still be "APP")
     let builder = settings_loader::LayerBuilder::new()
@@ -389,8 +388,8 @@ fn test_backward_compatibility_default_prefix() {
     assert_eq!(result.port, 8888);
     assert_eq!(result.database.host, "legacy.db.local");
 
-    std::env::remove_var("APP_PORT");
-    std::env::remove_var("APP_DATABASE__HOST");
+    std::env::remove_var("APP__PORT");
+    std::env::remove_var("APP__DATABASE__HOST");
 }
 
 // ============================================================================
@@ -399,6 +398,7 @@ fn test_backward_compatibility_default_prefix() {
 
 /// Test that existing code using default "__" separator continues to work
 #[test]
+#[serial]
 fn test_backward_compatibility_default_separator() {
     assert_eq!(
         DefaultOptions::env_separator(),
@@ -415,7 +415,8 @@ fn test_backward_compatibility_default_separator() {
     )
     .unwrap();
 
-    std::env::set_var("APP_DATABASE__PORT", "3306");
+    // With __ separator: APP__DATABASE__PORT maps to database.port
+    std::env::set_var("APP__DATABASE__PORT", "3306");
 
     let builder = settings_loader::LayerBuilder::new()
         .with_path(&config_path)
@@ -427,7 +428,7 @@ fn test_backward_compatibility_default_separator() {
 
     assert_eq!(result.database.port, 3306);
 
-    std::env::remove_var("APP_DATABASE__PORT");
+    std::env::remove_var("APP__DATABASE__PORT");
 }
 
 // ============================================================================
