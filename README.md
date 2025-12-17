@@ -1,9 +1,13 @@
 # settings-loader-rs
+
 **settings-loader-rs** is a Rust library designed to unify configuration sources from multiple origins—including 
 configuration files, command-line arguments, and environment variables—into a single, coherent application 
 representation. The primary goal is to decouple configuration sourcing from the application code, enabling 
 applications to retrieve configuration values seamlessly without concerning themselves with how or where the data 
 originates.
+
+> **Status**: Under active development toward v1.0.0. Currently at v0.15.0. Phase 1 (Explicit Configuration Layering) 
+> being completed for v0.16.0. See [Roadmap](#roadmap) for full vision.
 
 # Features
 - **Unified Configuration Management** – SettingsLoader::load() consolidates multiple configuration sources into a single 
@@ -203,6 +207,59 @@ export HTTP_API_PORT=8080
   2. `local.yaml` or `production.yaml` (environment-specific overrides)
   3. Environment variables
   4. Command-line arguments
+
+# Roadmap
+
+## Vision: v1.0.0 Release
+
+`settings-loader-rs` is evolving from a read-only configuration loader into a comprehensive configuration management 
+system. The roadmap spans **7 phases** with incremental releases from v0.16.0 to v1.0.0.
+
+**CRITICAL**: All 7 phases must be completed before v1.0.0 release. No partial releases.
+
+### Phase Progress
+
+| Phase | Feature | Version | Status | ETA |
+|-------|---------|---------|--------|-----|
+| 1 | Explicit Configuration Layering | v0.16.0 | ✅ Implementation Complete (Gate 2 Approved) | Complete |
+| 2 | Environment Variable Customization | v0.17.0 | ⏳ Planned | Week 2 |
+| 3 | Multi-Scope Paths | v0.18.0 | ⏳ Planned | Week 3 |
+| 4 | Configuration Editing | v0.19.0 | ⏳ Planned | Weeks 4-5 |
+| 5 | Metadata & Introspection | v0.20.0 | ⏳ Planned | Weeks 6-7 |
+| 6 | Source Provenance | v0.21.0 | ⏳ Planned | Weeks 8-9 |
+| 7 | Schema Export & Documentation | v1.0.0 | ⏳ Planned | Weeks 10-11 |
+
+### Phase 1: Explicit Configuration Layering (CURRENT)
+
+Enables explicit definition of configuration sources with clear precedence using the `LayerBuilder` API.
+
+```rust
+// Example: Define configuration layers
+impl LoadingOptions for MyOptions {
+    fn build_layers(&self, builder: LayerBuilder) -> LayerBuilder {
+        builder
+            .with_path("config.yaml")           // Base config
+            .with_path("local.yaml")             // Environment override
+            .with_secrets("secrets.yaml")        // Secrets layer
+            .with_env_vars("APP", "__")          // Env var overrides
+    }
+}
+
+let settings = MySettings::load(&options)?;
+```
+
+**Key Features**:
+- `ConfigLayer` enum with 5 layer types
+- `LayerBuilder` fluent API
+- Backward compatible with implicit layering
+- All formats supported (YAML, JSON, TOML, HJSON, RON)
+- Tests: 35/35 passing
+
+**Status**: Ready for v0.16.0 release after Gate 3 approval
+
+### Future Phases
+
+See [`history/CONSOLIDATED_ROADMAP.md`](history/CONSOLIDATED_ROADMAP.md) for detailed specifications of phases 2-7.
 
 #### Example Usage with Environment Variables
 Run the application with environment variables applied:

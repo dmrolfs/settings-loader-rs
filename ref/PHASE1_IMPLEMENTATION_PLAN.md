@@ -9,6 +9,23 @@
 
 ---
 
+## ⚠️ RELEASE CONSTRAINT: ALL 7 PHASES REQUIRED FOR v1.0.0
+
+**CRITICAL**: All 7 phases must be completed before v1.0.0 release.
+
+This Phase 1 completion releases v0.16.0, but the full roadmap must complete:
+- Phase 1 → v0.16.0 (Explicit Layering) ✅ CURRENT
+- Phase 2 → v0.17.0 (Environment Variable Customization)
+- Phase 3 → v0.18.0 (Multi-Scope Paths)
+- Phase 4 → v0.19.0 (Configuration Editing)
+- Phase 5 → v0.20.0 (Metadata & Introspection)
+- Phase 6 → v0.21.0 (Source Provenance)
+- Phase 7 → v1.0.0 (Schema Export & Documentation Generation)
+
+**No partial releases** of incomplete phases to stable. All phases must reach Gate 3 approval before publishing.
+
+---
+
 ## Overview
 
 Phase 1 implements the Explicit Configuration Layering API - allows applications to compose configuration sources with clear, explicit precedence. Later layers override earlier layers.
