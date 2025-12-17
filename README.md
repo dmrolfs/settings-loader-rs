@@ -6,8 +6,8 @@ representation. The primary goal is to decouple configuration sourcing from the 
 applications to retrieve configuration values seamlessly without concerning themselves with how or where the data 
 originates.
 
-> **Status**: Under active development. Currently at v0.15.0. Phase 1 (Explicit Configuration Layering) 
-> being completed for v0.16.0. Full 7-phase roadmap planned through v0.22.0. See [Roadmap](#roadmap) for full vision.
+> **Status**: Under active development. Currently at v0.15.0. Phase 1 (Explicit Configuration Layering) complete. 
+> Full 7-phase development planned, single release v0.22.0 after all phases complete. See [Roadmap](#roadmap) for full vision.
 
 # Features
 - **Unified Configuration Management** – SettingsLoader::load() consolidates multiple configuration sources into a single 
@@ -210,24 +210,26 @@ export HTTP_API_PORT=8080
 
 # Roadmap
 
-## Vision: v0.22.0 Final Release
+## Vision: v0.22.0 Single Release
 
 `settings-loader-rs` is evolving from a read-only configuration loader into a comprehensive configuration management 
-system. The roadmap spans **7 phases** with incremental releases from v0.16.0 through v0.22.0 (all v0.x).
+system. The roadmap spans **7 phases**, all developed and tested before a single release.
 
-**CRITICAL**: All 7 phases must be completed before final release (v0.22.0). No partial releases.
+**RELEASE POLICY**: All 7 phases must be completed before any release. Single v0.22.0 release when all phases ready.
+No intermediate releases (v0.16.0, v0.17.0, etc.) - only v0.22.0 after Phase 7 completion.
 
 ### Phase Progress
 
-| Phase | Feature | Version | Status | ETA |
-|-------|---------|---------|--------|-----|
-| 1 | Explicit Configuration Layering | v0.16.0 | ✅ Implementation Complete (Gate 2 Approved) | Complete |
-| 2 | Environment Variable Customization | v0.17.0 | ⏳ Planned | Week 2 |
-| 3 | Multi-Scope Paths | v0.18.0 | ⏳ Planned | Week 3 |
-| 4 | Configuration Editing | v0.19.0 | ⏳ Planned | Weeks 4-5 |
-| 5 | Metadata & Introspection | v0.20.0 | ⏳ Planned | Weeks 6-7 |
-| 6 | Source Provenance | v0.21.0 | ⏳ Planned | Weeks 8-9 |
-| 7 | Schema Export & Documentation | v0.22.0 | ⏳ Planned | Weeks 10-11 |
+| Phase | Feature | Status | ETA |
+|-------|---------|--------|-----|
+| 1 | Explicit Configuration Layering | ✅ Implementation Complete (Gate 2 Approved) | Complete |
+| 2 | Environment Variable Customization | ⏳ Planned | Week 2 |
+| 3 | Multi-Scope Paths | ⏳ Planned | Week 3 |
+| 4 | Configuration Editing | ⏳ Planned | Weeks 4-5 |
+| 5 | Metadata & Introspection | ⏳ Planned | Weeks 6-7 |
+| 6 | Source Provenance | ⏳ Planned | Weeks 8-9 |
+| 7 | Schema Export & Documentation | ⏳ Planned | Weeks 10-11 |
+| **RELEASE** | **v0.22.0** (all phases) | ⏳ After Phase 7 | Weeks 11+ |
 
 ### Phase 1: Explicit Configuration Layering (CURRENT)
 

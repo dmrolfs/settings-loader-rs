@@ -9,20 +9,18 @@
 
 ---
 
-## ⚠️ RELEASE CONSTRAINT: ALL 7 PHASES REQUIRED
+## ⚠️ RELEASE CONSTRAINT: NO RELEASE UNTIL ALL 7 PHASES COMPLETE
 
-**CRITICAL**: All 7 phases must be completed before final release.
+**CRITICAL**: No release to users until all 7 phases are complete and approved.
 
-This Phase 1 completion releases v0.16.0, but the full roadmap must complete (all in v0.x):
-- Phase 1 → v0.16.0 (Explicit Layering) ✅ CURRENT
-- Phase 2 → v0.17.0 (Environment Variable Customization)
-- Phase 3 → v0.18.0 (Multi-Scope Paths)
-- Phase 4 → v0.19.0 (Configuration Editing)
-- Phase 5 → v0.20.0 (Metadata & Introspection)
-- Phase 6 → v0.21.0 (Source Provenance)
-- Phase 7 → v0.22.0 (Schema Export & Documentation Generation) - FINAL RELEASE
+Single release model (v0.22.0 after Phase 7):
+- Phase 1 (this task) → Development ✅ COMPLETE
+- Phases 2-7 → Development and testing (no intermediate releases)
+- All 7 phases → Final Gate 3 Integration Review
+- **v0.22.0** → ONLY release, published when all phases ready
 
-**No partial releases** of incomplete phases to stable. All phases must reach Gate 3 approval before publishing.
+**NO intermediate releases** (v0.16.0, v0.17.0, etc.) to production. 
+All phases developed, tested, and approved together before any release.
 
 ---
 
