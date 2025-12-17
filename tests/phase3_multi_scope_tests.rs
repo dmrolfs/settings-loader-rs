@@ -12,7 +12,6 @@
 
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 
 // ============================================================================
@@ -46,14 +45,14 @@ struct TestDatabaseConfig {
 fn test_config_scope_enum() {
     // This test verifies the ConfigScope enum can be constructed
     // and has all expected variants with proper traits
-    
+
     // If this compiles, ConfigScope exists with:
     // - System variant
     // - UserGlobal variant
     // - ProjectLocal variant
     // - Runtime variant
     // - Debug, Clone, Copy, PartialEq, Eq, Hash derivations
-    
+
     let _ = (
         "System should be constructible",
         "UserGlobal should be constructible",
@@ -72,7 +71,7 @@ fn test_config_scope_enum() {
 fn test_resolve_path_system_scope() {
     // On Linux, System scope should search /etc/app-name/
     // Expected: Some path starting with /etc or None if not configured
-    
+
     // This test will be implemented after ConfigScope and resolve_path exist
     let system_scope_description = "System scope uses /etc/app-name on Linux";
     assert!(!system_scope_description.is_empty());
@@ -89,7 +88,7 @@ fn test_resolve_path_user_global_scope() {
     // - macOS: ~/Library/Application Support/app-name
     // - Linux: ~/.config/app-name (XDG_CONFIG_HOME)
     // - Windows: %APPDATA%/app-name
-    
+
     // This test requires MultiScopeConfig implementation
     let user_global_description = "UserGlobal uses platform-specific paths";
     assert!(!user_global_description.is_empty());
@@ -131,7 +130,7 @@ fn test_resolve_path_project_local_scope() {
 fn test_resolve_path_runtime_scope() {
     // Runtime scope is for env vars + CLI, not file-based
     // resolve_path(ConfigScope::Runtime) should return None
-    
+
     let runtime_is_not_file_based = true;
     assert!(runtime_is_not_file_based);
 }
@@ -222,7 +221,7 @@ fn test_multi_scope_config_trait() {
     // MultiScopeConfig should be accessible from settings_loader
     // Should extend LoadingOptions
     // Should have required associated constants
-    
+
     let trait_exists = "MultiScopeConfig trait should exist and be implementable";
     assert!(!trait_exists.is_empty());
 }
@@ -239,7 +238,7 @@ fn test_default_scopes() {
     // 2. UserGlobal (user preferences)
     // 3. ProjectLocal (project-specific overrides)
     // NOT included by default: Runtime (handled separately via env vars)
-    
+
     let default_order = "System → UserGlobal → ProjectLocal";
     assert!(!default_order.is_empty());
 }
@@ -254,12 +253,12 @@ fn test_turtle_scope_resolution() {
     // Turtle application structure:
     // - APP_NAME: "spark-turtle"
     // - ORG_NAME: "spark-turtle"
-    // 
+    //
     // Should resolve:
     // - System: /etc/spark-turtle/settings.{ext}
     // - UserGlobal: ~/.config/spark-turtle/settings.{ext} (on Linux)
     // - ProjectLocal: ./settings.{ext}
-    
+
     let turtle_app = "spark-turtle";
     assert!(!turtle_app.is_empty());
 }
@@ -274,7 +273,7 @@ fn test_turtle_scope_resolution() {
 fn test_platform_specific_paths() {
     // On Linux: Should use XDG Base Directory spec
     // ~/.config for user config, /etc for system config
-    
+
     let xdg_compliance = "Should follow XDG Base Directory spec on Linux";
     assert!(!xdg_compliance.is_empty());
 }
@@ -308,11 +307,11 @@ fn test_scope_equality_and_hashing() {
     // - Eq for equality checks
     // - Hash for use in collections
     // - PartialEq for comparisons
-    
+
     // This test verifies compile-time constraints
     let mut scope_map: HashMap<String, String> = HashMap::new();
     scope_map.insert("System".to_string(), "immutable".to_string());
-    
+
     assert_eq!(scope_map.len(), 1);
 }
 
@@ -338,7 +337,7 @@ fn test_multi_scope_with_layer_builder() {
     // Multi-scope layering should merge correctly
     // Final version should be 3.0 (project overrides)
     // Final app_name should be SystemDefault (from system, not overridden)
-    
+
     let layering_works = "Multi-scope layers should merge with proper precedence";
     assert!(!layering_works.is_empty());
 }
@@ -350,7 +349,7 @@ fn test_backward_compat_with_phases_1_2() {
     // - LayerBuilder from Phase 1
     // - Custom env prefix/separator from Phase 2
     // - All existing tests should still pass
-    
+
     let backward_compat = "Must maintain full backward compatibility with Phase 1-2";
     assert!(!backward_compat.is_empty());
 }

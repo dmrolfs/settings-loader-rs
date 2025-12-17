@@ -1,6 +1,6 @@
 # Phase 2: Environment Variable Customization
 
-**Epic**: sl-xxx (to be assigned)  
+**Epic**: sl-365 (Closed)  
 **Phase**: 2 (Environment Variable Customization)  
 **Status**: ✅ COMPLETE - Implementation Done  
 **Total Subtasks**: 3 (strict dependency chain)  
@@ -52,9 +52,10 @@ impl LoadingOptions for TurtleOptions {
 
 ## 3 Subtasks with Dependencies
 
-### PHASE2.1: Test Suite [TDD RED]
+### PHASE2.1: Test Suite [TDD RED] (sl-dtc)
 
-**File**: Create `tests/phase2_env_customization_tests.rs`
+**File**: Create `tests/phase2_env_customization_tests.rs`  
+**Beads Issue**: sl-dtc
 
 **Tests** (12 total):
 
@@ -76,13 +77,15 @@ impl LoadingOptions for TurtleOptions {
 - [x] 12 tests compiled successfully (RED phase completed)
 - [x] Tests demonstrate all scenarios
 
-**Blocks**: PHASE2.2
+**Blocks**: PHASE2.2 (sl-dp8)
 
 ---
 
-### PHASE2.2: Trait Enhancement [TDD GREEN]
+### PHASE2.2: Trait Enhancement [TDD GREEN] (sl-dp8)
 
-**File**: `src/loading_options.rs`
+**File**: `src/loading_options.rs`  
+**Beads Issue**: sl-dp8  
+**Blocked by**: sl-dtc
 
 Add to LoadingOptions trait:
 
@@ -113,14 +116,16 @@ pub trait LoadingOptions: Sized {
 - [x] All existing tests still passing (backward compatibility)
 - [x] No changes to existing test fixtures
 
-**Blocked by**: PHASE2.1  
-**Blocks**: PHASE2.3
+**Blocked by**: PHASE2.1 (sl-dtc)  
+**Blocks**: PHASE2.3 (sl-xkr)
 
 ---
 
-### PHASE2.3: SettingsLoader Integration [TDD GREEN]
+### PHASE2.3: SettingsLoader Integration [TDD GREEN] (sl-xkr)
 
-**File**: `src/settings_loader.rs` and `src/layer.rs`
+**File**: `src/settings_loader.rs` and `src/layer.rs`  
+**Beads Issue**: sl-xkr  
+**Blocked by**: sl-dp8
 
 **Modify LayerBuilder.build()**:
 
@@ -155,7 +160,7 @@ ConfigLayer::EnvVars { prefix, separator } => config.add_source(
 - [x] No unsafe code
 - [x] Code formatted, 0 code clippy warnings
 
-**Blocked by**: PHASE2.2  
+**Blocked by**: PHASE2.2 (sl-dp8)  
 **Status**: ✅ COMPLETE - Implementation integrated and validated
 
 ---
@@ -266,12 +271,21 @@ ref/
 
 ## Progress Tracking
 
-- [x] PHASE2.1 (TDD RED) - Create test file ✅ COMPLETE
-- [x] PHASE2.2 (TDD GREEN) - Implement trait methods ✅ COMPLETE
-- [x] PHASE2.3 (TDD GREEN) - Verify integration ✅ COMPLETE
+- [x] PHASE2.1 (sl-dtc) - TDD RED - Create test file ✅ COMPLETE
+- [x] PHASE2.2 (sl-dp8) - TDD GREEN - Implement trait methods ✅ COMPLETE
+- [x] PHASE2.3 (sl-xkr) - TDD GREEN - Verify integration ✅ COMPLETE
 - [x] Validation - All tests pass, quality gates verified ✅ COMPLETE
 
 **Final Status**: All 39 tests passing (27 Phase 1 + 12 Phase 2)
+
+**Beads Issue Dependencies**:
+```
+sl-dtc (PHASE2.1)
+  ↓
+sl-dp8 (PHASE2.2)
+  ↓
+sl-xkr (PHASE2.3)
+```
 
 ---
 

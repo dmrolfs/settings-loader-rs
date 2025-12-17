@@ -65,6 +65,7 @@ pub use environment::Environment;
 pub use error::SettingsError;
 pub use layer::{ConfigLayer, LayerBuilder};
 pub use loading_options::{LoadingOptions, NoOptions};
+pub use scope::ConfigScope;
 pub use settings_loader::SettingsLoader;
 
 pub mod common;
@@ -73,6 +74,7 @@ pub mod error;
 mod internals;
 pub mod layer;
 pub mod loading_options;
+pub mod scope;
 pub mod settings_loader;
 
 #[cfg(test)]

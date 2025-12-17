@@ -1,8 +1,8 @@
 # Phase 3: Multi-Scope Configuration Support
 
-**Epic**: sl-xxx (to be assigned)  
+**Epic**: sl-ozp  
 **Phase**: 3 (Multi-Scope Configuration Support)  
-**Status**: Planning (Design & TDD phase)  
+**Status**: Ready for Implementation (Design & TDD phase complete)  
 **Total Subtasks**: 4 (strict dependency chain)  
 **Total Tests**: 14 pre-written (tests/phase3_multi_scope_tests.rs)  
 **Target**: Merge to feat/comprehensive-config-management-v1
@@ -86,9 +86,10 @@ impl LoadingOptions for TurtleConfig {
 
 ## 4 Subtasks with Dependencies
 
-### PHASE3.1: Test Suite [TDD RED]
+### PHASE3.1: Test Suite [TDD RED] (sl-x7d)
 
-**File**: Create `tests/phase3_multi_scope_tests.rs`
+**File**: Create `tests/phase3_multi_scope_tests.rs`  
+**Beads Issue**: sl-x7d
 
 **Tests** (14 total):
 
@@ -112,13 +113,15 @@ impl LoadingOptions for TurtleConfig {
 - [ ] 14 tests compile but fail (RED phase)
 - [ ] Tests demonstrate all scenarios
 
-**Blocks**: PHASE3.2
+**Blocks**: PHASE3.2 (sl-wcu)
 
 ---
 
-### PHASE3.2: ConfigScope Enum & Find Logic [TDD GREEN]
+### PHASE3.2: ConfigScope Enum & Find Logic [TDD GREEN] (sl-wcu)
 
-**File**: Create `src/scope.rs`
+**File**: Create `src/scope.rs`  
+**Beads Issue**: sl-wcu  
+**Blocked by**: sl-x7d
 
 Implement ConfigScope enum:
 
@@ -155,14 +158,16 @@ pub fn find_config_in(dir: &Path) -> Option<PathBuf> {
 - [ ] find_config_in() searches multiple extensions in correct order
 - [ ] Tests 1-2, 14 passing
 
-**Blocked by**: PHASE3.1  
-**Blocks**: PHASE3.3
+**Blocked by**: PHASE3.1 (sl-x7d)  
+**Blocks**: PHASE3.3 (sl-4ug)
 
 ---
 
-### PHASE3.3: MultiScopeConfig Trait [TDD GREEN]
+### PHASE3.3: MultiScopeConfig Trait [TDD GREEN] (sl-4ug)
 
-**File**: Modify `src/loading_options.rs` to add trait, create helper functions
+**File**: Modify `src/loading_options.rs` to add trait, create helper functions  
+**Beads Issue**: sl-4ug  
+**Blocked by**: sl-wcu
 
 Implement `MultiScopeConfig` trait:
 
@@ -225,14 +230,16 @@ pub trait MultiScopeConfig: LoadingOptions {
 - [ ] Tests 3-13 passing
 - [ ] Uses `directories` crate feature flag
 
-**Blocked by**: PHASE3.2  
-**Blocks**: PHASE3.4
+**Blocked by**: PHASE3.2 (sl-wcu)  
+**Blocks**: PHASE3.4 (sl-evw)
 
 ---
 
-### PHASE3.4: Integration with LayerBuilder [TDD GREEN]
+### PHASE3.4: Integration with LayerBuilder [TDD GREEN] (sl-evw)
 
-**File**: `src/layer.rs`, `src/settings_loader.rs`
+**File**: `src/layer.rs`, `src/settings_loader.rs`  
+**Beads Issue**: sl-evw  
+**Blocked by**: sl-4ug
 
 Modify `LayerBuilder::build()` or create convenience function to use MultiScopeConfig:
 
@@ -272,7 +279,7 @@ let builder = LayerBuilder::new()
 - [ ] No unsafe code
 - [ ] Code formatted, 0 clippy warnings
 
-**Blocked by**: PHASE3.3  
+**Blocked by**: PHASE3.3 (sl-4ug)  
 **Status**: Ready for implementation after TDD tests written
 
 ---
@@ -412,17 +419,46 @@ ref/
 
 ## Progress Tracking
 
-- [ ] PHASE3.1 (TDD RED) - Create test file
-- [ ] PHASE3.2 (TDD GREEN) - Implement ConfigScope enum
-- [ ] PHASE3.3 (TDD GREEN) - Implement MultiScopeConfig trait
-- [ ] PHASE3.4 (TDD GREEN) - Verify integration
+- [ ] PHASE3.1 (sl-x7d) - TDD RED - Create test file
+- [ ] PHASE3.2 (sl-wcu) - TDD GREEN - Implement ConfigScope enum
+- [ ] PHASE3.3 (sl-4ug) - TDD GREEN - Implement MultiScopeConfig trait
+- [ ] PHASE3.4 (sl-evw) - TDD GREEN - Verify integration
 - [ ] Validation - All tests pass, quality gates verified
+
+**Beads Issue Dependencies**:
+```
+sl-x7d (PHASE3.1)
+  ↓
+sl-wcu (PHASE3.2)
+  ↓
+sl-4ug (PHASE3.3)
+  ↓
+sl-evw (PHASE3.4)
+```
 
 ---
 
 ## Next Steps
 
-1. Create tests/phase3_multi_scope_tests.rs with 14 failing tests (RED phase)
+1. All tests/phase3_multi_scope_tests.rs tests created (RED phase ready)
+2. Begin PHASE3.1 (sl-x7d): Verify test file compiles
+3. Then PHASE3.2 (sl-wcu): Implement ConfigScope enum  
+4. Then PHASE3.3 (sl-4ug): Implement MultiScopeConfig trait
+5. Then PHASE3.4 (sl-evw): Add with_scopes() to LayerBuilder
+6. Run comprehensive validation: `cargo test --all && cargo clippy && cargo fmt`
+7. All tests passing → ready for merging to feat/comprehensive-config-management-v1
+
+## Implementation Starting Point
+
+To start Phase 3:
+1. Verify tests exist and compile: `cargo test --test phase3_multi_scope_tests --no-run`
+2. Check current failing test count
+3. Follow dependency chain: sl-x7d → sl-wcu → sl-4ug → sl-evw
+4. Each subtask unblocks the next
+
+## Old Next Steps (Reference)
+
+1. ~~Create tests/phase3_multi_scope_tests.rs with 14 failing tests (RED phase)~~
 2. Review test design and accept
 3. Implement ConfigScope enum in src/scope.rs (GREEN phase)
 4. Implement MultiScopeConfig trait in src/loading_options.rs (GREEN phase)
