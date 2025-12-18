@@ -607,7 +607,8 @@ fn test_layer_builder_with_scopes_integration() {
     let builder = LayerBuilder::new().with_scopes::<TestAppConfig>(vec![ConfigScope::ProjectLocal]);
 
     // Verify the builder has layers (ProjectLocal should find the config file)
-    assert!(builder.layer_count() >= 0, "with_scopes should create layers");
+    let layer_count = builder.layer_count();
+    assert!(layer_count > 0, "with_scopes should create layers");
 
     // Restore original directory
     if let Some(cwd) = original_cwd {
