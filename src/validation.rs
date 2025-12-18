@@ -8,6 +8,7 @@
 //! - [`ValidationError`] - Detailed validation failure information
 //! - [`ValidationResult`] - Aggregation of validation results and warnings
 
+use crate::metadata::{Constraint, SettingMetadata, SettingType};
 use std::fmt;
 
 /// Detailed validation error describing constraint violations
@@ -143,12 +144,7 @@ impl ValidationError {
     /// Extract all errors from nested Multiple variants
     pub fn flatten(&self) -> Vec<&ValidationError> {
         match self {
-            ValidationError::Multiple(errors) => {
-                errors
-                    .iter()
-                    .flat_map(|e| e.flatten())
-                    .collect()
-            }
+            ValidationError::Multiple(errors) => errors.iter().flat_map(|e| e.flatten()).collect(),
             _ => vec![self],
         }
     }
@@ -159,73 +155,44 @@ impl fmt::Display for ValidationError {
         match self {
             ValidationError::ConstraintViolation { key, reason } => {
                 write!(f, "{}: {}", key, reason)
-            }
-            ValidationError::TypeMismatch {
-                key,
-                expected,
-                actual,
-            } => {
-                write!(
-                    f,
-                    "{}: type mismatch - expected {}, got {}",
-                    key, expected, actual
-                )
-            }
+            },
+            ValidationError::TypeMismatch { key, expected, actual } => {
+                write!(f, "{}: type mismatch - expected {}, got {}", key, expected, actual)
+            },
             ValidationError::MissingRequired { key } => {
                 write!(f, "{}: required field is missing", key)
-            }
-            ValidationError::InvalidPattern {
-                key,
-                pattern,
-                value,
-            } => {
+            },
+            ValidationError::InvalidPattern { key, pattern, value } => {
                 write!(
                     f,
                     "{}: value '{}' does not match required pattern '{}'",
                     key, value, pattern
                 )
-            }
-            ValidationError::OutOfRange {
-                key,
-                min,
-                max,
-                value,
-            } => {
+            },
+            ValidationError::OutOfRange { key, min, max, value } => {
                 write!(
                     f,
                     "{}: value {} is outside allowed range [{}, {}]",
                     key, value, min, max
                 )
-            }
+            },
             ValidationError::TooShort { key, min, length } => {
-                write!(
-                    f,
-                    "{}: length {} is shorter than minimum {}",
-                    key, length, min
-                )
-            }
+                write!(f, "{}: length {} is shorter than minimum {}", key, length, min)
+            },
             ValidationError::TooLong { key, max, length } => {
-                write!(
-                    f,
-                    "{}: length {} exceeds maximum {}",
-                    key, length, max
-                )
-            }
-            ValidationError::NotOneOf {
-                key,
-                expected,
-                actual,
-            } => {
+                write!(f, "{}: length {} exceeds maximum {}", key, length, max)
+            },
+            ValidationError::NotOneOf { key, expected, actual } => {
                 let expected_str = expected.join(", ");
                 write!(
                     f,
                     "{}: '{}' is not one of allowed values: {}",
                     key, actual, expected_str
                 )
-            }
+            },
             ValidationError::CustomValidation { key, message } => {
                 write!(f, "{}: {}", key, message)
-            }
+            },
             ValidationError::Multiple(errors) => {
                 writeln!(f, "Multiple validation errors:")?;
                 for (idx, error) in errors.iter().enumerate() {
@@ -235,12 +202,490 @@ impl fmt::Display for ValidationError {
                     }
                 }
                 Ok(())
-            }
+            },
         }
     }
 }
 
 impl std::error::Error for ValidationError {}
+
+// ============================================================================
+// HELPER TRAIT FOR JSON VALUES
+// ============================================================================
+
+trait JsonTypeStr {
+    fn type_str(&self) -> &'static str;
+}
+
+impl JsonTypeStr for serde_json::Value {
+    fn type_str(&self) -> &'static str {
+        match self {
+            serde_json::Value::Null => "null",
+            serde_json::Value::Bool(_) => "boolean",
+            serde_json::Value::Number(_) => "number",
+            serde_json::Value::String(_) => "string",
+            serde_json::Value::Array(_) => "array",
+            serde_json::Value::Object(_) => "object",
+        }
+    }
+}
+
+// ============================================================================
+// CONSTRAINT VALIDATORS
+// ============================================================================
+
+impl Constraint {
+    /// Validate a value against this constraint
+    ///
+    /// # Arguments
+    /// * `key` - Setting key for error context
+    /// * `value` - JSON value to validate
+    ///
+    /// # Returns
+    /// * `Ok(())` if validation passes
+    /// * `Err(ValidationError)` if validation fails
+    pub fn validate(&self, key: &str, value: &serde_json::Value) -> Result<(), ValidationError> {
+        match self {
+            Constraint::Pattern(pattern) => Self::validate_pattern(key, pattern, value),
+            Constraint::Range { min, max } => Self::validate_range(key, *min, *max, value),
+            Constraint::Length { min, max } => Self::validate_length(key, *min, *max, value),
+            Constraint::Required => Self::validate_required(key, value),
+            Constraint::OneOf(options) => Self::validate_one_of(key, options, value),
+            Constraint::Custom(_name) => {
+                // Custom constraints are application-specific and delegated to the app
+                // We don't validate them here - just pass through
+                Ok(())
+            },
+        }
+    }
+
+    /// Validate that a string value matches a regex pattern
+    fn validate_pattern(key: &str, pattern: &str, value: &serde_json::Value) -> Result<(), ValidationError> {
+        let value_str = value.as_str().ok_or_else(|| ValidationError::TypeMismatch {
+            key: key.to_string(),
+            expected: "string".to_string(),
+            actual: value.type_str().to_string(),
+        })?;
+
+        // Compile regex - if compilation fails, that's a constraint violation
+        let re = regex::Regex::new(pattern).map_err(|_| ValidationError::ConstraintViolation {
+            key: key.to_string(),
+            reason: format!("Invalid regex pattern: {}", pattern),
+        })?;
+
+        if !re.is_match(value_str) {
+            return Err(ValidationError::InvalidPattern {
+                key: key.to_string(),
+                pattern: pattern.to_string(),
+                value: value_str.to_string(),
+            });
+        }
+
+        Ok(())
+    }
+
+    /// Validate that a numeric value is within range
+    fn validate_range(key: &str, min: f64, max: f64, value: &serde_json::Value) -> Result<(), ValidationError> {
+        let num = value
+            .as_f64()
+            .or_else(|| value.as_i64().map(|i| i as f64))
+            .or_else(|| value.as_u64().map(|u| u as f64))
+            .ok_or_else(|| ValidationError::TypeMismatch {
+                key: key.to_string(),
+                expected: "number".to_string(),
+                actual: value.type_str().to_string(),
+            })?;
+
+        if num < min || num > max {
+            return Err(ValidationError::OutOfRange { key: key.to_string(), min, max, value: num });
+        }
+
+        Ok(())
+    }
+
+    /// Validate that a string or array length is within bounds
+    fn validate_length(key: &str, min: usize, max: usize, value: &serde_json::Value) -> Result<(), ValidationError> {
+        let length = match value {
+            serde_json::Value::String(s) => s.chars().count(),
+            serde_json::Value::Array(arr) => arr.len(),
+            _ => {
+                return Err(ValidationError::TypeMismatch {
+                    key: key.to_string(),
+                    expected: "string or array".to_string(),
+                    actual: value.type_str().to_string(),
+                })
+            },
+        };
+
+        if length < min {
+            return Err(ValidationError::TooShort { key: key.to_string(), min, length });
+        }
+
+        if length > max {
+            return Err(ValidationError::TooLong { key: key.to_string(), max, length });
+        }
+
+        Ok(())
+    }
+
+    /// Validate that a value is not null/missing
+    fn validate_required(key: &str, value: &serde_json::Value) -> Result<(), ValidationError> {
+        if value.is_null() {
+            return Err(ValidationError::MissingRequired { key: key.to_string() });
+        }
+        Ok(())
+    }
+
+    /// Validate that a value is one of the allowed options
+    fn validate_one_of(key: &str, options: &[String], value: &serde_json::Value) -> Result<(), ValidationError> {
+        let value_str = value.as_str().ok_or_else(|| ValidationError::TypeMismatch {
+            key: key.to_string(),
+            expected: "string".to_string(),
+            actual: value.type_str().to_string(),
+        })?;
+
+        if !options.contains(&value_str.to_string()) {
+            return Err(ValidationError::NotOneOf {
+                key: key.to_string(),
+                expected: options.to_vec(),
+                actual: value_str.to_string(),
+            });
+        }
+
+        Ok(())
+    }
+}
+
+// ============================================================================
+// TYPE VALIDATORS
+// ============================================================================
+
+impl SettingType {
+    /// Validate a value against this type's constraints
+    pub fn validate(&self, key: &str, value: &serde_json::Value) -> Result<(), ValidationError> {
+        match self {
+            SettingType::String { pattern, min_length, max_length } => {
+                Self::validate_string(key, value, pattern.as_deref(), *min_length, *max_length)
+            },
+            SettingType::Integer { min, max } => Self::validate_integer(key, value, *min, *max),
+            SettingType::Float { min, max } => Self::validate_float(key, value, *min, *max),
+            SettingType::Boolean => Self::validate_boolean(key, value),
+            SettingType::Duration { min, max } => Self::validate_duration(key, value, *min, *max),
+            SettingType::Path { must_exist, is_directory } => {
+                Self::validate_path(key, value, *must_exist, *is_directory)
+            },
+            SettingType::Url { schemes } => Self::validate_url(key, value, schemes),
+            SettingType::Enum { variants } => Self::validate_enum(key, value, variants),
+            SettingType::Secret => {
+                // Secrets just need to be present and non-null
+                if value.is_null() {
+                    Err(ValidationError::MissingRequired { key: key.to_string() })
+                } else {
+                    Ok(())
+                }
+            },
+            SettingType::Array { element_type, min_items, max_items } => {
+                Self::validate_array(key, value, element_type, *min_items, *max_items)
+            },
+            SettingType::Object { fields } => Self::validate_object(key, value, fields),
+            SettingType::Any => {
+                // Any type accepts anything
+                Ok(())
+            },
+        }
+    }
+
+    fn validate_string(
+        key: &str, value: &serde_json::Value, pattern: Option<&str>, min_length: Option<usize>,
+        max_length: Option<usize>,
+    ) -> Result<(), ValidationError> {
+        let s = value.as_str().ok_or_else(|| ValidationError::TypeMismatch {
+            key: key.to_string(),
+            expected: "string".to_string(),
+            actual: value.type_str().to_string(),
+        })?;
+
+        if let Some(pattern) = pattern {
+            let re = regex::Regex::new(pattern).map_err(|_| ValidationError::ConstraintViolation {
+                key: key.to_string(),
+                reason: format!("Invalid regex pattern: {}", pattern),
+            })?;
+
+            if !re.is_match(s) {
+                return Err(ValidationError::InvalidPattern {
+                    key: key.to_string(),
+                    pattern: pattern.to_string(),
+                    value: s.to_string(),
+                });
+            }
+        }
+
+        let length = s.chars().count();
+
+        if let Some(min) = min_length {
+            if length < min {
+                return Err(ValidationError::TooShort { key: key.to_string(), min, length });
+            }
+        }
+
+        if let Some(max) = max_length {
+            if length > max {
+                return Err(ValidationError::TooLong { key: key.to_string(), max, length });
+            }
+        }
+
+        Ok(())
+    }
+
+    fn validate_integer(
+        key: &str, value: &serde_json::Value, min: Option<i64>, max: Option<i64>,
+    ) -> Result<(), ValidationError> {
+        let i = value.as_i64().ok_or_else(|| ValidationError::TypeMismatch {
+            key: key.to_string(),
+            expected: "integer".to_string(),
+            actual: value.type_str().to_string(),
+        })?;
+
+        if let Some(min_val) = min {
+            if i < min_val {
+                return Err(ValidationError::OutOfRange {
+                    key: key.to_string(),
+                    min: min_val as f64,
+                    max: max.unwrap_or(i64::MAX) as f64,
+                    value: i as f64,
+                });
+            }
+        }
+
+        if let Some(max_val) = max {
+            if i > max_val {
+                return Err(ValidationError::OutOfRange {
+                    key: key.to_string(),
+                    min: min.unwrap_or(i64::MIN) as f64,
+                    max: max_val as f64,
+                    value: i as f64,
+                });
+            }
+        }
+
+        Ok(())
+    }
+
+    fn validate_float(
+        key: &str, value: &serde_json::Value, min: Option<f64>, max: Option<f64>,
+    ) -> Result<(), ValidationError> {
+        let f = value
+            .as_f64()
+            .or_else(|| value.as_i64().map(|i| i as f64))
+            .or_else(|| value.as_u64().map(|u| u as f64))
+            .ok_or_else(|| ValidationError::TypeMismatch {
+                key: key.to_string(),
+                expected: "float".to_string(),
+                actual: value.type_str().to_string(),
+            })?;
+
+        if let Some(min_val) = min {
+            if f < min_val {
+                return Err(ValidationError::OutOfRange {
+                    key: key.to_string(),
+                    min: min_val,
+                    max: max.unwrap_or(f64::MAX),
+                    value: f,
+                });
+            }
+        }
+
+        if let Some(max_val) = max {
+            if f > max_val {
+                return Err(ValidationError::OutOfRange {
+                    key: key.to_string(),
+                    min: min.unwrap_or(f64::MIN),
+                    max: max_val,
+                    value: f,
+                });
+            }
+        }
+
+        Ok(())
+    }
+
+    fn validate_boolean(key: &str, value: &serde_json::Value) -> Result<(), ValidationError> {
+        value.as_bool().ok_or_else(|| ValidationError::TypeMismatch {
+            key: key.to_string(),
+            expected: "boolean".to_string(),
+            actual: value.type_str().to_string(),
+        })?;
+        Ok(())
+    }
+
+    fn validate_duration(
+        key: &str, value: &serde_json::Value, _min: Option<std::time::Duration>, _max: Option<std::time::Duration>,
+    ) -> Result<(), ValidationError> {
+        // Duration validation: accept number (seconds) or object with secs/nanos
+        if value.is_number() || value.is_object() {
+            Ok(())
+        } else {
+            Err(ValidationError::TypeMismatch {
+                key: key.to_string(),
+                expected: "duration (number or object)".to_string(),
+                actual: value.type_str().to_string(),
+            })
+        }
+    }
+
+    fn validate_path(
+        key: &str, value: &serde_json::Value, _must_exist: bool, _is_directory: bool,
+    ) -> Result<(), ValidationError> {
+        value.as_str().ok_or_else(|| ValidationError::TypeMismatch {
+            key: key.to_string(),
+            expected: "path string".to_string(),
+            actual: value.type_str().to_string(),
+        })?;
+        // Note: Actual filesystem checks (must_exist, is_directory) would be done
+        // at a higher level, not in type validation
+        Ok(())
+    }
+
+    fn validate_url(key: &str, value: &serde_json::Value, schemes: &[String]) -> Result<(), ValidationError> {
+        let url_str = value.as_str().ok_or_else(|| ValidationError::TypeMismatch {
+            key: key.to_string(),
+            expected: "URL string".to_string(),
+            actual: value.type_str().to_string(),
+        })?;
+
+        // If schemes are specified, validate the scheme matches
+        if !schemes.is_empty() {
+            if let Some(scheme_end) = url_str.find("://") {
+                let scheme = &url_str[..scheme_end];
+                if !schemes.contains(&scheme.to_string()) {
+                    return Err(ValidationError::ConstraintViolation {
+                        key: key.to_string(),
+                        reason: format!("URL scheme '{}' not in allowed schemes: {}", scheme, schemes.join(", ")),
+                    });
+                }
+            } else {
+                return Err(ValidationError::ConstraintViolation {
+                    key: key.to_string(),
+                    reason: "URL must have a scheme (e.g., http://)".to_string(),
+                });
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_enum(key: &str, value: &serde_json::Value, variants: &[String]) -> Result<(), ValidationError> {
+        let s = value.as_str().ok_or_else(|| ValidationError::TypeMismatch {
+            key: key.to_string(),
+            expected: "enum variant string".to_string(),
+            actual: value.type_str().to_string(),
+        })?;
+
+        if !variants.contains(&s.to_string()) {
+            return Err(ValidationError::NotOneOf {
+                key: key.to_string(),
+                expected: variants.to_vec(),
+                actual: s.to_string(),
+            });
+        }
+
+        Ok(())
+    }
+
+    fn validate_array(
+        key: &str, value: &serde_json::Value, element_type: &SettingType, min_items: Option<usize>,
+        max_items: Option<usize>,
+    ) -> Result<(), ValidationError> {
+        let arr = value.as_array().ok_or_else(|| ValidationError::TypeMismatch {
+            key: key.to_string(),
+            expected: "array".to_string(),
+            actual: value.type_str().to_string(),
+        })?;
+
+        if let Some(min) = min_items {
+            if arr.len() < min {
+                return Err(ValidationError::TooShort { key: key.to_string(), min, length: arr.len() });
+            }
+        }
+
+        if let Some(max) = max_items {
+            if arr.len() > max {
+                return Err(ValidationError::TooLong { key: key.to_string(), max, length: arr.len() });
+            }
+        }
+
+        // Validate each element
+        for (idx, item) in arr.iter().enumerate() {
+            let item_key = format!("{}[{}]", key, idx);
+            element_type.validate(&item_key, item)?;
+        }
+
+        Ok(())
+    }
+
+    fn validate_object(
+        key: &str, value: &serde_json::Value, fields: &[SettingMetadata],
+    ) -> Result<(), ValidationError> {
+        value.as_object().ok_or_else(|| ValidationError::TypeMismatch {
+            key: key.to_string(),
+            expected: "object".to_string(),
+            actual: value.type_str().to_string(),
+        })?;
+
+        // Validate each field if they exist in the object
+        for field in fields {
+            if let Some(field_value) = value.get(&field.key) {
+                field.validate_value(field_value)?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+// ============================================================================
+// METADATA VALIDATORS
+// ============================================================================
+
+impl SettingMetadata {
+    /// Validate a value against this setting's metadata (type + constraints)
+    pub fn validate_value(&self, value: &serde_json::Value) -> Result<(), ValidationError> {
+        // Check type first
+        self.setting_type.validate(&self.key, value)?;
+
+        // Then check all constraints
+        for constraint in &self.constraints {
+            constraint.validate(&self.key, value)?;
+        }
+
+        Ok(())
+    }
+
+    /// Validate a value and return detailed ValidationResult
+    pub fn validate(&self, value: &serde_json::Value) -> crate::validation::ValidationResult {
+        let mut result = crate::validation::ValidationResult::new();
+
+        // Check required constraint
+        if self.constraints.contains(&Constraint::Required) && value.is_null() {
+            result.add_error(ValidationError::MissingRequired { key: self.key.clone() });
+            return result;
+        }
+
+        // Check type
+        if let Err(e) = self.setting_type.validate(&self.key, value) {
+            result.add_error(e);
+            return result;
+        }
+
+        // Check constraints
+        for constraint in &self.constraints {
+            if let Err(e) = constraint.validate(&self.key, value) {
+                result.add_error(e);
+            }
+        }
+
+        result
+    }
+}
 
 /// Aggregated validation results including errors and warnings
 ///
@@ -373,9 +818,7 @@ mod tests {
 
     #[test]
     fn validation_error_missing_required_display() {
-        let error = ValidationError::MissingRequired {
-            key: "api_key".to_string(),
-        };
+        let error = ValidationError::MissingRequired { key: "api_key".to_string() };
         assert_eq!(error.to_string(), "api_key: required field is missing");
     }
 
@@ -410,11 +853,7 @@ mod tests {
     fn validation_error_not_one_of_display() {
         let error = ValidationError::NotOneOf {
             key: "env".to_string(),
-            expected: vec![
-                "dev".to_string(),
-                "staging".to_string(),
-                "prod".to_string(),
-            ],
+            expected: vec!["dev".to_string(), "staging".to_string(), "prod".to_string()],
             actual: "invalid".to_string(),
         };
         let msg = error.to_string();
@@ -425,18 +864,14 @@ mod tests {
 
     #[test]
     fn validation_error_key_extraction() {
-        let error = ValidationError::MissingRequired {
-            key: "test_key".to_string(),
-        };
+        let error = ValidationError::MissingRequired { key: "test_key".to_string() };
         assert_eq!(error.key(), Some("test_key"));
     }
 
     #[test]
     fn validation_error_multiple_flatten() {
         let error = ValidationError::Multiple(vec![
-            ValidationError::MissingRequired {
-                key: "key1".to_string(),
-            },
+            ValidationError::MissingRequired { key: "key1".to_string() },
             ValidationError::OutOfRange {
                 key: "key2".to_string(),
                 min: 0.0,
@@ -462,9 +897,7 @@ mod tests {
         let mut result = ValidationResult::new();
         assert!(result.is_valid());
 
-        result.add_error(ValidationError::MissingRequired {
-            key: "test".to_string(),
-        });
+        result.add_error(ValidationError::MissingRequired { key: "test".to_string() });
 
         assert!(!result.is_valid());
         assert_eq!(result.error_count(), 1);
@@ -483,9 +916,7 @@ mod tests {
     #[test]
     fn validation_result_merge() {
         let mut result1 = ValidationResult::new();
-        result1.add_error(ValidationError::MissingRequired {
-            key: "key1".to_string(),
-        });
+        result1.add_error(ValidationError::MissingRequired { key: "key1".to_string() });
 
         let mut result2 = ValidationResult::new();
         result2.add_error(ValidationError::OutOfRange {
@@ -509,9 +940,7 @@ mod tests {
     #[test]
     fn validation_result_into_result_err() {
         let mut result = ValidationResult::new();
-        result.add_error(ValidationError::MissingRequired {
-            key: "test".to_string(),
-        });
+        result.add_error(ValidationError::MissingRequired { key: "test".to_string() });
         assert!(result.into_result().is_err());
     }
 
@@ -524,9 +953,7 @@ mod tests {
     #[test]
     fn validation_result_display_invalid() {
         let mut result = ValidationResult::new();
-        result.add_error(ValidationError::MissingRequired {
-            key: "test".to_string(),
-        });
+        result.add_error(ValidationError::MissingRequired { key: "test".to_string() });
         let msg = result.to_string();
         assert!(msg.contains("Validation failed"));
         assert!(msg.contains("1 error"));
