@@ -15,6 +15,7 @@
 //! - **Statistics**: Analyze configuration distribution and metadata
 
 use crate::metadata::{ConfigSchema, Constraint, SettingGroup, SettingMetadata, SettingType, Visibility};
+use crate::validation::{ValidationError, ValidationResult};
 use std::collections::HashMap;
 
 /// Runtime introspection API for configuration schemas
@@ -197,7 +198,7 @@ pub trait SettingsIntrospection {
     }
 
     // ========================================================================
-    // VALIDATION & CONSTRAINTS
+    // VALIDATION & CONSTRAINTS (SCHEMA CHECKS)
     // ========================================================================
 
     /// Validate that a setting with the given key exists
@@ -214,6 +215,97 @@ pub trait SettingsIntrospection {
         self.get_setting(key)
             .map(|s| s.setting_type == *expected_type)
             .unwrap_or(false)
+    }
+
+    // ========================================================================
+    // VALUE VALIDATION (CONSTRAINT CHECKING)
+    // ========================================================================
+
+    /// Validate a single setting value against its metadata constraints
+    ///
+    /// Looks up the setting by key and validates the value against its type
+    /// and constraint requirements.
+    ///
+    /// # Arguments
+    /// * `key` - Setting key to validate
+    /// * `value` - JSON value to validate
+    ///
+    /// # Returns
+    /// * `Ok(ValidationResult)` with accumulated errors/warnings
+    /// * `Err(ValidationError)` if setting key doesn't exist
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use settings_loader::introspection::SettingsIntrospection;
+    /// use serde_json::json;
+    ///
+    /// let config: Box<dyn SettingsIntrospection> = Box::new(my_config);
+    /// let result = config.validate_setting_value("port", &json!(8080))?;
+    ///
+    /// if result.is_valid() {
+    ///     println!("Port is valid");
+    /// } else {
+    ///     for error in result.errors() {
+    ///         eprintln!("Validation error: {}", error);
+    ///     }
+    /// }
+    /// ```
+    fn validate_setting_value(
+        &self, key: &str, value: &serde_json::Value,
+    ) -> Result<ValidationResult, ValidationError> {
+        match self.get_setting(key) {
+            Some(metadata) => Ok(metadata.validate(value)),
+            None => Err(ValidationError::ConstraintViolation {
+                key: key.to_string(),
+                reason: format!("Setting '{}' not found in schema", key),
+            }),
+        }
+    }
+
+    /// Validate an entire configuration object against all settings
+    ///
+    /// Iterates through all settings in the schema and validates corresponding
+    /// values in the configuration object. Accumulates all errors and warnings.
+    ///
+    /// # Arguments
+    /// * `config` - JSON object with setting values to validate
+    ///
+    /// # Returns
+    /// * `Ok(ValidationResult)` with all validation errors/warnings
+    /// * `Err(ValidationError)` on internal validation failures (unexpected)
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use settings_loader::introspection::SettingsIntrospection;
+    /// use serde_json::json;
+    ///
+    /// let config: Box<dyn SettingsIntrospection> = Box::new(my_config);
+    /// let values = json!({
+    ///     "port": 8080,
+    ///     "host": "0.0.0.0",
+    ///     "timeout_secs": 30
+    /// });
+    ///
+    /// let result = config.validate_config(&values)?;
+    /// if !result.is_valid() {
+    ///     eprintln!("Configuration has {} errors", result.errors().len());
+    /// }
+    /// ```
+    fn validate_config(&self, config: &serde_json::Value) -> Result<ValidationResult, ValidationError> {
+        let mut result = ValidationResult::new();
+        let schema = self.get_schema();
+
+        // Validate each setting
+        for setting in schema.settings {
+            if let Some(value) = config.get(&setting.key) {
+                let validation_result = setting.validate(value);
+                result.merge(validation_result);
+            }
+        }
+
+        Ok(result)
     }
 
     // ========================================================================
@@ -377,15 +469,9 @@ mod tests {
                         key: "database.port".to_string(),
                         label: "Database Port".to_string(),
                         description: "Database server port".to_string(),
-                        setting_type: SettingType::Integer {
-                            min: Some(1),
-                            max: Some(65535),
-                        },
+                        setting_type: SettingType::Integer { min: Some(1), max: Some(65535) },
                         default: Some(json!(5432)),
-                        constraints: vec![Constraint::Range {
-                            min: 1.0,
-                            max: 65535.0,
-                        }],
+                        constraints: vec![Constraint::Range { min: 1.0, max: 65535.0 }],
                         visibility: Visibility::Public,
                         group: Some("database".to_string()),
                     },
@@ -432,21 +518,9 @@ mod tests {
                 key: format!("setting_{}", i),
                 label: format!("Setting {}", i),
                 description: format!("Test setting number {}", i),
-                setting_type: SettingType::String {
-                    pattern: None,
-                    min_length: None,
-                    max_length: None,
-                },
-                default: if i % 2 == 0 {
-                    Some(json!(format!("value_{}", i)))
-                } else {
-                    None
-                },
-                constraints: if i % 5 == 0 {
-                    vec![Constraint::Required]
-                } else {
-                    vec![]
-                },
+                setting_type: SettingType::String { pattern: None, min_length: None, max_length: None },
+                default: if i % 2 == 0 { Some(json!(format!("value_{}", i))) } else { None },
+                constraints: if i % 5 == 0 { vec![Constraint::Required] } else { vec![] },
                 visibility,
                 group: Some(group_name.to_string()),
             });
@@ -685,7 +759,10 @@ mod tests {
         if let SettingType::Object { fields } = &database_setting.setting_type {
             let port_field = &fields[1];
             assert!(!port_field.constraints.is_empty());
-            assert!(port_field.constraints.iter().any(|c| matches!(c, Constraint::Range { .. })));
+            assert!(port_field
+                .constraints
+                .iter()
+                .any(|c| matches!(c, Constraint::Range { .. })));
         } else {
             panic!("Expected Object type");
         }
@@ -894,5 +971,250 @@ mod tests {
         for setting in required {
             assert!(setting.constraints.contains(&Constraint::Required));
         }
+    }
+
+    // ========================================================================
+    // VALIDATION INTEGRATION TESTS
+    // ========================================================================
+
+    /// Test validate_setting_value with valid value
+    #[test]
+    fn test_validate_setting_value_valid() {
+        let settings = TestSettings;
+        let result = settings.validate_setting_value("api_url", &json!("http://localhost:8080"));
+
+        assert!(result.is_ok());
+        let validation = result.unwrap();
+        assert!(validation.is_valid());
+    }
+
+    /// Test validate_setting_value with invalid value (wrong type)
+    #[test]
+    fn test_validate_setting_value_type_mismatch() {
+        let settings = TestSettings;
+        let result = settings.validate_setting_value("api_url", &json!(8080));
+
+        assert!(result.is_ok());
+        let validation = result.unwrap();
+        assert!(!validation.is_valid());
+        assert_eq!(validation.errors().len(), 1);
+    }
+
+    /// Test validate_setting_value with non-existent setting
+    #[test]
+    fn test_validate_setting_value_not_found() {
+        let settings = TestSettings;
+        let result = settings.validate_setting_value("nonexistent_key", &json!("value"));
+
+        assert!(result.is_err());
+        if let Err(e) = result {
+            assert!(e.key() == Some("nonexistent_key"));
+        }
+    }
+
+    /// Test validate_setting_value with required constraint
+    #[test]
+    fn test_validate_setting_value_required_constraint() {
+        let settings = TestSettings;
+
+        // api_key has Required constraint
+        let result = settings.validate_setting_value("api_key", &json!(null));
+        assert!(result.is_ok());
+        let validation = result.unwrap();
+        assert!(!validation.is_valid());
+        assert!(validation.errors().len() >= 1);
+    }
+
+    /// Test validate_setting_value with proper secret value
+    #[test]
+    fn test_validate_setting_value_secret_valid() {
+        let settings = TestSettings;
+        let result = settings.validate_setting_value("api_key", &json!("super-secret-key"));
+
+        assert!(result.is_ok());
+        let validation = result.unwrap();
+        assert!(validation.is_valid());
+    }
+
+    /// Test validate_config with valid configuration
+    #[test]
+    fn test_validate_config_valid() {
+        let settings = TestSettings;
+        let config = json!({
+            "api_url": "http://localhost:8080",
+            "api_key": "secret-key"
+        });
+
+        let result = settings.validate_config(&config);
+        assert!(result.is_ok());
+        let validation = result.unwrap();
+        assert!(validation.is_valid());
+    }
+
+    /// Test validate_config with multiple errors
+    #[test]
+    fn test_validate_config_multiple_errors() {
+        let settings = TestSettings;
+        let config = json!({
+            "api_url": 8080,  // Wrong type (should be string)
+            "api_key": null   // Missing required value
+        });
+
+        let result = settings.validate_config(&config);
+        assert!(result.is_ok());
+        let validation = result.unwrap();
+        assert!(!validation.is_valid());
+        assert_eq!(validation.errors().len(), 2);
+    }
+
+    /// Test validate_config with partial configuration
+    #[test]
+    fn test_validate_config_partial() {
+        let settings = TestSettings;
+        let config = json!({
+            "api_url": "http://localhost:8080"
+        });
+
+        let result = settings.validate_config(&config);
+        assert!(result.is_ok());
+        let validation = result.unwrap();
+        // api_key is missing (not provided in config), so validation should pass
+        // Validation doesn't fail for missing optional values - only validates what's present
+        assert!(validation.is_valid());
+    }
+
+    /// Test validate_config with extra fields (should be ignored)
+    #[test]
+    fn test_validate_config_extra_fields() {
+        let settings = TestSettings;
+        let config = json!({
+            "api_url": "http://localhost:8080",
+            "api_key": "secret-key",
+            "extra_field": "should be ignored"
+        });
+
+        let result = settings.validate_config(&config);
+        assert!(result.is_ok());
+        let validation = result.unwrap();
+        assert!(validation.is_valid());
+    }
+
+    /// Test validate_config with complex nested configuration
+    #[test]
+    fn test_validate_config_nested_objects() {
+        let settings = NestedTestSettings;
+        let config = json!({
+            "database": {
+                "database.host": "localhost",
+                "database.port": 5432,
+                "database.password": "db-password"
+            }
+        });
+
+        let result = settings.validate_config(&config);
+        assert!(result.is_ok());
+        let validation = result.unwrap();
+        // Object validation validates fields if they exist in the nested config
+        // Empty config should be valid (no violations found)
+        assert!(validation.is_valid());
+    }
+
+    /// Test validate_setting_value on main nested object
+    #[test]
+    fn test_validate_setting_value_nested_object() {
+        let settings = NestedTestSettings;
+
+        // database is an Object type containing nested fields
+        let config = json!({
+            "database.host": "localhost",
+            "database.port": 5432,
+            "database.password": "secret"
+        });
+        let result = settings.validate_setting_value("database", &config);
+        assert!(result.is_ok());
+        let validation = result.unwrap();
+        assert!(validation.is_valid());
+    }
+
+    /// Test validate_setting_value with nested object type mismatch
+    #[test]
+    fn test_validate_setting_value_nested_object_type_mismatch() {
+        let settings = NestedTestSettings;
+
+        // database should be an object, not a string
+        let result = settings.validate_setting_value("database", &json!("not-an-object"));
+        assert!(result.is_ok());
+        let validation = result.unwrap();
+        assert!(!validation.is_valid());
+        assert_eq!(validation.errors().len(), 1);
+    }
+
+    /// Test validate_config with trait object
+    #[test]
+    fn test_validate_config_trait_object() {
+        let introspector: Box<dyn SettingsIntrospection> = Box::new(TestSettings);
+
+        let config = json!({
+            "api_url": "http://localhost:8080",
+            "api_key": "secret-key"
+        });
+
+        let result = introspector.validate_config(&config);
+        assert!(result.is_ok());
+        let validation = result.unwrap();
+        assert!(validation.is_valid());
+    }
+
+    /// Test validate_setting_value with trait object
+    #[test]
+    fn test_validate_setting_value_trait_object() {
+        let introspector: Box<dyn SettingsIntrospection> = Box::new(TestSettings);
+
+        let result = introspector.validate_setting_value("api_url", &json!("http://localhost:8080"));
+        assert!(result.is_ok());
+        let validation = result.unwrap();
+        assert!(validation.is_valid());
+    }
+
+    /// Test error context preservation through validation
+    #[test]
+    fn test_validation_error_context_preservation() {
+        let settings = TestSettings;
+        let result = settings.validate_setting_value("api_url", &json!(123));
+
+        assert!(result.is_ok());
+        let validation = result.unwrap();
+        assert!(!validation.is_valid());
+
+        // Error should preserve the key context
+        let error = &validation.errors()[0];
+        assert_eq!(error.key(), Some("api_url"));
+    }
+
+    /// Test validation result merging in validate_config
+    #[test]
+    fn test_validation_result_merging() {
+        let settings = TestSettings;
+        let config = json!({
+            "api_url": 123,      // Type error
+            "api_key": null      // Missing required
+        });
+
+        let result = settings.validate_config(&config);
+        assert!(result.is_ok());
+        let validation = result.unwrap();
+
+        // Both errors should be merged
+        assert!(!validation.is_valid());
+        assert_eq!(validation.errors().len(), 2);
+
+        // Verify keys are preserved
+        let keys: Vec<_> = validation
+            .errors()
+            .iter()
+            .filter_map(|e| e.key().map(String::from))
+            .collect();
+        assert!(keys.contains(&"api_url".to_string()));
+        assert!(keys.contains(&"api_key".to_string()));
     }
 }

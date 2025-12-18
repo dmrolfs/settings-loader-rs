@@ -730,4 +730,128 @@ mod phase5_3_validation_tests {
         // assert!(metadata.validate(&json!("abc123")).is_err()); // Wrong pattern
         return; // RED phase test skipped
     }
+
+    // ============================================================================
+    // SECRET VALUE REDACTION TESTS
+    // ============================================================================
+
+    #[test]
+    fn test_secret_value_redaction_in_pattern_error() {
+        // Note: Pattern "[0-9A-Z]+" matches any substring with these characters
+        // "invalid-key-123" contains "123" which matches, so use a stricter pattern
+        let metadata = SettingMetadata {
+            key: "api_key".to_string(),
+            label: "API Key".to_string(),
+            description: "Secret API key".to_string(),
+            setting_type: SettingType::String { pattern: None, min_length: None, max_length: None },
+            default: None,
+            // Pattern that must match the ENTIRE string
+            constraints: vec![Constraint::Pattern("^[a-zA-Z0-9]{32}$".to_string())],
+            visibility: Visibility::Secret,
+            group: None,
+        };
+
+        let result = metadata.validate(&json!("not-long-enough-key-value"));
+        assert!(!result.is_valid());
+        let error_msg = result.errors()[0].to_string();
+
+        // Should redact the actual secret value
+        assert!(error_msg.contains("[REDACTED:api_key]"));
+        assert!(!error_msg.contains("not-long-enough-key-value"));
+    }
+
+    #[test]
+    fn test_hidden_value_redaction_in_range_error() {
+        let metadata = SettingMetadata {
+            key: "password_length".to_string(),
+            label: "Password Length".to_string(),
+            description: "Password setting".to_string(),
+            setting_type: SettingType::Integer { min: Some(8), max: Some(64) },
+            default: None,
+            constraints: vec![],
+            visibility: Visibility::Hidden,
+            group: None,
+        };
+
+        let result = metadata.validate(&json!(3));
+        let error_msg = result.errors()[0].to_string();
+
+        // Hidden values should also be redacted
+        assert!(error_msg.contains("[REDACTED:password_length]"));
+        assert!(error_msg.contains("outside allowed range [8, 64]"));
+    }
+
+    #[test]
+    fn test_public_values_not_redacted() {
+        let metadata = SettingMetadata {
+            key: "timeout".to_string(),
+            label: "Timeout".to_string(),
+            description: "Timeout in seconds".to_string(),
+            setting_type: SettingType::Integer { min: Some(1), max: Some(300) },
+            default: None,
+            constraints: vec![],
+            visibility: Visibility::Public,
+            group: None,
+        };
+
+        let result = metadata.validate(&json!(500));
+        let error_msg = result.errors()[0].to_string();
+
+        // Public values should NOT be redacted
+        assert!(error_msg.contains("500"));
+        assert!(!error_msg.contains("[REDACTED"));
+    }
+
+    #[test]
+    fn test_secret_value_redaction_in_oneof_error() {
+        let metadata = SettingMetadata {
+            key: "db_password".to_string(),
+            label: "Database Password".to_string(),
+            description: "Secret password".to_string(),
+            setting_type: SettingType::String { pattern: None, min_length: None, max_length: None },
+            default: None,
+            constraints: vec![Constraint::OneOf(vec![
+                "prod-secret-1".to_string(),
+                "prod-secret-2".to_string(),
+            ])],
+            visibility: Visibility::Secret,
+            group: None,
+        };
+
+        let result = metadata.validate(&json!("wrong-password-xyz"));
+        let error_msg = result.errors()[0].to_string();
+
+        // Secret value should be redacted in OneOf error
+        assert!(error_msg.contains("[REDACTED:db_password]"));
+        assert!(!error_msg.contains("wrong-password-xyz"));
+    }
+
+    #[test]
+    fn test_multiple_errors_all_redacted_for_secret() {
+        let metadata = SettingMetadata {
+            key: "token".to_string(),
+            label: "API Token".to_string(),
+            description: "Secret token".to_string(),
+            setting_type: SettingType::String {
+                pattern: Some("[a-zA-Z0-9]{32}".to_string()),
+                min_length: Some(32),
+                max_length: Some(32),
+            },
+            default: None,
+            constraints: vec![Constraint::Required, Constraint::Pattern("[a-zA-Z0-9]{32}".to_string())],
+            visibility: Visibility::Secret,
+            group: None,
+        };
+
+        let result = metadata.validate(&json!("short"));
+
+        // All errors for secret values should be redacted
+        for error in result.errors() {
+            let error_msg = error.to_string();
+            assert!(!error_msg.contains("short"));
+            if error_msg.contains("value") {
+                assert!(error_msg.contains("[REDACTED:token]"));
+            }
+        }
+    }
 }

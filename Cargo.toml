@@ -31,7 +31,7 @@ database = ["sqlx", "secrecy", "zeroize"]
 http = ["url"]
 multi-scope = ["directories"]
 editor = ["toml_edit", "parking_lot", "toml", "serde_json", "serde_yaml"]
-metadata = ["serde_json", "regex"]
+metadata = ["serde_json", "regex", "zeroize"]
 serde = []
 
 [dependencies]
@@ -69,3 +69,4 @@ serde_yaml = "0.9"
 tempfile = "3.8"
 serial_test = "3.2.0"
 clap = { version = "^4.0", features = ["derive"] }
+proptest = "1.4"

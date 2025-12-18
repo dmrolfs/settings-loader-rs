@@ -16,11 +16,9 @@ use std::fs;
 use tempfile::TempDir;
 
 #[allow(dead_code)]
-
 // ============================================================================
 // Test Configuration Types
 // ============================================================================
-
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Default)]
 #[allow(dead_code)]
 struct TestConfig {

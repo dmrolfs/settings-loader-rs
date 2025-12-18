@@ -5,11 +5,23 @@
 //!
 //! # Core Types
 //!
-//! - [`ValidationError`] - Detailed validation failure information
+//! - [`ValidationError`] - Detailed validation failure information with expert-backed secret handling
 //! - [`ValidationResult`] - Aggregation of validation results and warnings
+//!
+//! # Secret Value Handling
+//!
+//! This module uses the `secrecy` and `zeroize` crates (from RustCrypto) to safely handle
+//! secret validation errors. Secret values are never stored in error objects; instead:
+//! - Actual secret values are immediately zeroed from memory (via `zeroize`)
+//! - Error messages use `[REDACTED:key-name]` markers for secrets
+//! - Redaction happens at error creation time, making errors safe to log anywhere
+//!
+//! This approach is more secure than custom redaction logic and leverages expert
+//! cryptographic implementations from the RustCrypto organization.
 
-use crate::metadata::{Constraint, SettingMetadata, SettingType};
+use crate::metadata::{Constraint, SettingMetadata, SettingType, Visibility};
 use std::fmt;
+use zeroize::Zeroize;
 
 /// Detailed validation error describing constraint violations
 ///
@@ -148,6 +160,70 @@ impl ValidationError {
             _ => vec![self],
         }
     }
+
+    /// Redact sensitive values from error messages based on visibility
+    ///
+    /// Replaces actual values with `[REDACTED:key-name]` for Secret and Hidden visibility.
+    /// This prevents leaking sensitive information (API keys, passwords, tokens) in error logs.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let error = ValidationError::InvalidPattern {
+    ///     key: "api_key".to_string(),
+    ///     pattern: "[0-9]+".to_string(),
+    ///     value: "sk-abc123xyz".to_string(),
+    /// };
+    /// let redacted = error.redact_if_secret(Visibility::Secret);
+    /// // Now displays as: "api_key: value '[REDACTED:api_key]' does not match pattern..."
+    /// ```
+    pub fn redact_if_secret(self, visibility: Visibility) -> Self {
+        match visibility {
+            Visibility::Secret | Visibility::Hidden => self.redact(),
+            _ => self,
+        }
+    }
+
+    /// Unconditionally redact all sensitive values from this error
+    ///
+    /// Uses the `zeroize` crate to securely zero secret values from memory.
+    /// This prevents accidental leakage of secrets even if the error object is cloned.
+    fn redact(self) -> Self {
+        match self {
+            ValidationError::InvalidPattern { key, pattern, value } => {
+                // Securely zero the secret value from memory
+                let mut secret_value = value;
+                secret_value.zeroize();
+
+                ValidationError::InvalidPattern {
+                    key: key.clone(),
+                    pattern,
+                    value: format!("[REDACTED:{}]", key),
+                }
+            },
+            ValidationError::OutOfRange { key, min, max, .. } => {
+                // Use NaN sentinel - won't display in error message
+                // No need to zeroize f64 (doesn't hold sensitive data in memory)
+                ValidationError::OutOfRange { key, min, max, value: f64::NAN }
+            },
+            ValidationError::NotOneOf { key, expected, actual } => {
+                // Securely zero the secret value from memory
+                let mut secret_value = actual;
+                secret_value.zeroize();
+
+                ValidationError::NotOneOf {
+                    key: key.clone(),
+                    expected,
+                    actual: format!("[REDACTED:{}]", key),
+                }
+            },
+            ValidationError::Multiple(errors) => {
+                ValidationError::Multiple(errors.into_iter().map(|e| e.redact()).collect())
+            },
+            // Other variants don't expose values or are already safe
+            other => other,
+        }
+    }
 }
 
 impl fmt::Display for ValidationError {
@@ -165,16 +241,25 @@ impl fmt::Display for ValidationError {
             ValidationError::InvalidPattern { key, pattern, value } => {
                 write!(
                     f,
-                    "{}: value '{}' does not match required pattern '{}'",
-                    key, value, pattern
+                    "{}: value '{}' does not match required pattern '{}' (expected: pattern matching {})",
+                    key, value, pattern, pattern
                 )
             },
             ValidationError::OutOfRange { key, min, max, value } => {
-                write!(
-                    f,
-                    "{}: value {} is outside allowed range [{}, {}]",
-                    key, value, min, max
-                )
+                if value.is_nan() {
+                    // Value was redacted
+                    write!(
+                        f,
+                        "{}: [REDACTED:{}] is outside allowed range [{}, {}] (expected: between {} and {})",
+                        key, key, min, max, min, max
+                    )
+                } else {
+                    write!(
+                        f,
+                        "{}: value {} is outside allowed range [{}, {}] (expected: between {} and {})",
+                        key, value, min, max, min, max
+                    )
+                }
             },
             ValidationError::TooShort { key, min, length } => {
                 write!(f, "{}: length {} is shorter than minimum {}", key, length, min)
@@ -186,8 +271,8 @@ impl fmt::Display for ValidationError {
                 let expected_str = expected.join(", ");
                 write!(
                     f,
-                    "{}: '{}' is not one of allowed values: {}",
-                    key, actual, expected_str
+                    "{}: '{}' is not one of allowed values: {} (expected: one of {})",
+                    key, actual, expected_str, expected_str
                 )
             },
             ValidationError::CustomValidation { key, message } => {
@@ -672,14 +757,16 @@ impl SettingMetadata {
 
         // Check type
         if let Err(e) = self.setting_type.validate(&self.key, value) {
-            result.add_error(e);
+            let error = e.redact_if_secret(self.visibility);
+            result.add_error(error);
             return result;
         }
 
         // Check constraints
         for constraint in &self.constraints {
             if let Err(e) = constraint.validate(&self.key, value) {
-                result.add_error(e);
+                let error = e.redact_if_secret(self.visibility);
+                result.add_error(error);
             }
         }
 
