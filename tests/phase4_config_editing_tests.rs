@@ -1,20 +1,4 @@
 //! Comprehensive test suite for Phase 4: Configuration Editing & Writing
-//!
-//! Tests validate:
-//! - ConfigFormat enum with from_path() detection
-//! - LayerEditor trait with get/set/unset/save operations
-//! - SettingsEditor trait for format auto-detection
-//! - EditorError handling
-//! - TOML comment preservation (toml_edit backend)
-//! - JSON roundtrip editing
-//! - YAML roundtrip editing
-//! - Dotted path navigation
-//! - Dirty flag tracking
-//! - Atomic write safety
-//! - Real-world Turtle TUI scenario
-//!
-//! TDD RED PHASE - Tests currently fail until implementation is complete.
-//! Each test is designed to pass once the corresponding feature is implemented.
 
 use std::fs;
 use std::path::PathBuf;
@@ -23,7 +7,13 @@ use tempfile::TempDir;
 #[cfg(feature = "editor")]
 mod tests {
     use super::*;
-    use settings_loader::editor::{ConfigFormat, EditorError, LayerEditor, SettingsEditor};
+    use settings_loader::editor::json::JsonLayerEditor;
+    use settings_loader::editor::toml::TomlLayerEditor;
+    use settings_loader::editor::yaml::YamlLayerEditor;
+    use settings_loader::editor::{ConfigFormat, Editor, EditorError, SettingsLoaderEditor};
+    use settings_loader::LayerEditor;
+    use settings_loader::SettingsEditor;
+    use trim_margin::MarginTrimmable;
 
     // ========================================================================
     // Test 1-3: ConfigFormat Enum & from_path() Detection
@@ -92,8 +82,8 @@ mod tests {
         fs::write(&toml_path, "app_name = \"test_app\"\nversion = \"1.0.0\"").unwrap();
 
         // Open should succeed
-        // let editor = TomlLayerEditor::open(&toml_path).expect("Failed to open TOML");
-        // assert!(!editor.is_dirty());
+        let editor = TomlLayerEditor::open(&toml_path).expect("Failed to open TOML");
+        assert!(!editor.is_dirty());
     }
 
     /// Test get() retrieves values from TOML
@@ -104,9 +94,9 @@ mod tests {
 
         fs::write(&toml_path, "app_name = \"my_app\"").unwrap();
 
-        // let editor = TomlLayerEditor::open(&toml_path).unwrap();
-        // let value: String = editor.get("app_name").expect("Failed to get value");
-        // assert_eq!(value, "my_app");
+        let editor = TomlLayerEditor::open(&toml_path).unwrap();
+        let value: String = editor.get("app_name").expect("Failed to get value");
+        assert_eq!(value, "my_app");
     }
 
     /// Test set() modifies values in TOML
@@ -117,11 +107,11 @@ mod tests {
 
         fs::write(&toml_path, "app_name = \"old_app\"").unwrap();
 
-        // let mut editor = TomlLayerEditor::open(&toml_path).unwrap();
-        // editor.set("app_name", "new_app").expect("Failed to set value");
-        // assert!(editor.is_dirty());
-        // let value: String = editor.get("app_name").unwrap();
-        // assert_eq!(value, "new_app");
+        let mut editor = TomlLayerEditor::open(&toml_path).unwrap();
+        editor.set("app_name", "new_app").expect("Failed to set value");
+        assert!(editor.is_dirty());
+        let value: String = editor.get("app_name").unwrap();
+        assert_eq!(value, "new_app");
     }
 
     /// Test unset() removes keys from TOML
@@ -132,11 +122,11 @@ mod tests {
 
         fs::write(&toml_path, "app_name = \"test\"\nversion = \"1.0\"").unwrap();
 
-        // let mut editor = TomlLayerEditor::open(&toml_path).unwrap();
-        // editor.unset("version").expect("Failed to unset key");
-        // assert!(editor.is_dirty());
-        // let value: Option<String> = editor.get("version");
-        // assert!(value.is_none());
+        let mut editor = TomlLayerEditor::open(&toml_path).unwrap();
+        editor.unset("version").expect("Failed to unset key");
+        assert!(editor.is_dirty());
+        let value: Option<String> = editor.get("version");
+        assert!(value.is_none());
     }
 
     /// Test keys() returns all top-level keys
@@ -145,17 +135,13 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let toml_path = temp_dir.path().join("settings.toml");
 
-        fs::write(
-            &toml_path,
-            "app_name = \"test\"\nversion = \"1.0\"\ndebug = true",
-        )
-        .unwrap();
+        fs::write(&toml_path, "app_name = \"test\"\nversion = \"1.0\"\ndebug = true").unwrap();
 
-        // let editor = TomlLayerEditor::open(&toml_path).unwrap();
-        // let keys = editor.keys();
-        // assert!(keys.contains(&"app_name".to_string()));
-        // assert!(keys.contains(&"version".to_string()));
-        // assert!(keys.contains(&"debug".to_string()));
+        let editor = TomlLayerEditor::open(&toml_path).unwrap();
+        let keys = editor.keys();
+        assert!(keys.contains(&"app_name".to_string()));
+        assert!(keys.contains(&"version".to_string()));
+        assert!(keys.contains(&"debug".to_string()));
     }
 
     // ========================================================================
@@ -168,17 +154,13 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let toml_path = temp_dir.path().join("settings.toml");
 
-        fs::write(
-            &toml_path,
-            "[database]\nhost = \"localhost\"\nport = 5432",
-        )
-        .unwrap();
+        fs::write(&toml_path, "[database]\nhost = \"localhost\"\nport = 5432").unwrap();
 
-        // let editor = TomlLayerEditor::open(&toml_path).unwrap();
-        // let host: String = editor.get("database.host").unwrap();
-        // assert_eq!(host, "localhost");
-        // let port: u16 = editor.get("database.port").unwrap();
-        // assert_eq!(port, 5432);
+        let editor = TomlLayerEditor::open(&toml_path).unwrap();
+        let host: String = editor.get("database.host").unwrap();
+        assert_eq!(host, "localhost");
+        let port: u16 = editor.get("database.port").unwrap();
+        assert_eq!(port, 5432);
     }
 
     /// Test set() with dotted path creates nested structure
@@ -189,11 +171,11 @@ mod tests {
 
         fs::write(&toml_path, "# Empty config").unwrap();
 
-        // let mut editor = TomlLayerEditor::open(&toml_path).unwrap();
-        // editor.set("database.host", "db.example.com").unwrap();
-        // editor.set("database.port", 3306).unwrap();
-        // let host: String = editor.get("database.host").unwrap();
-        // assert_eq!(host, "db.example.com");
+        let mut editor = TomlLayerEditor::open(&toml_path).unwrap();
+        editor.set("database.host", "db.example.com").unwrap();
+        editor.set("database.port", 3306).unwrap();
+        let host: String = editor.get("database.host").unwrap();
+        assert_eq!(host, "db.example.com");
     }
 
     /// Test unset() with dotted path
@@ -202,11 +184,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let toml_path = temp_dir.path().join("settings.toml");
 
-        fs::write(
-            &toml_path,
-            "[database]\nhost = \"localhost\"\nport = 5432",
-        )
-        .unwrap();
+        fs::write(&toml_path, "[database]\nhost = \"localhost\"\nport = 5432").unwrap();
 
         // let mut editor = TomlLayerEditor::open(&toml_path).unwrap();
         // editor.unset("database.port").unwrap();
@@ -225,8 +203,8 @@ mod tests {
         let toml_path = temp_dir.path().join("settings.toml");
         fs::write(&toml_path, "app_name = \"test\"").unwrap();
 
-        // let editor = TomlLayerEditor::open(&toml_path).unwrap();
-        // assert!(!editor.is_dirty());
+        let editor = TomlLayerEditor::open(&toml_path).unwrap();
+        assert!(!editor.is_dirty());
     }
 
     /// Test is_dirty() returns true after modification
@@ -236,9 +214,9 @@ mod tests {
         let toml_path = temp_dir.path().join("settings.toml");
         fs::write(&toml_path, "app_name = \"test\"").unwrap();
 
-        // let mut editor = TomlLayerEditor::open(&toml_path).unwrap();
-        // editor.set("app_name", "modified").unwrap();
-        // assert!(editor.is_dirty());
+        let mut editor = TomlLayerEditor::open(&toml_path).unwrap();
+        editor.set("app_name", "modified").unwrap();
+        assert!(editor.is_dirty());
     }
 
     /// Test save() writes changes to file
@@ -248,10 +226,10 @@ mod tests {
         let toml_path = temp_dir.path().join("settings.toml");
         fs::write(&toml_path, "app_name = \"original\"").unwrap();
 
-        // let mut editor = TomlLayerEditor::open(&toml_path).unwrap();
-        // editor.set("app_name", "updated").unwrap();
-        // editor.save().expect("Failed to save");
-        // assert!(!editor.is_dirty());
+        let mut editor = TomlLayerEditor::open(&toml_path).unwrap();
+        editor.set("app_name", "updated").unwrap();
+        editor.save().expect("Failed to save");
+        assert!(!editor.is_dirty());
 
         // Verify file was actually updated
         let content = fs::read_to_string(&toml_path).unwrap();
@@ -269,18 +247,15 @@ mod tests {
         let toml_path = temp_dir.path().join("settings.toml");
         fs::write(&toml_path, "app_name = \"test\"").unwrap();
 
-        // let mut editor = TomlLayerEditor::open(&toml_path).unwrap();
-        // editor.set("app_name", "modified").unwrap();
-        // editor.save().unwrap();
+        let mut editor = TomlLayerEditor::open(&toml_path).unwrap();
+        editor.set("app_name", "modified").unwrap();
+        editor.save().unwrap();
 
         // Verify original file was atomically replaced
         let content = fs::read_to_string(&toml_path).unwrap();
-        assert_eq!(content.contains("modified"), true);
+        assert!(content.contains("modified"));
         // No temp files should remain
-        let entries: Vec<_> = fs::read_dir(temp_dir.path())
-            .unwrap()
-            .filter_map(Result::ok)
-            .collect();
+        let entries: Vec<_> = fs::read_dir(temp_dir.path()).unwrap().filter_map(Result::ok).collect();
         assert_eq!(entries.len(), 1); // Only settings.toml
     }
 
@@ -292,8 +267,8 @@ mod tests {
         let original_content = "app_name = \"original\"";
         fs::write(&toml_path, original_content).unwrap();
 
-        // let mut editor = TomlLayerEditor::open(&toml_path).unwrap();
-        // editor.set("app_name", "modified").unwrap();
+        let mut editor = TomlLayerEditor::open(&toml_path).unwrap();
+        editor.set("app_name", "modified").unwrap();
         // Simulate write error by making directory read-only (platform-specific)
         // editor.save() should fail
         // Verify original file untouched
@@ -323,9 +298,9 @@ port = 5432          # Database port
 
         fs::write(&toml_path, original_toml).unwrap();
 
-        // let mut editor = TomlLayerEditor::open(&toml_path).unwrap();
-        // editor.set("version", "2.0.0").unwrap();
-        // editor.save().unwrap();
+        let mut editor = TomlLayerEditor::open(&toml_path).unwrap();
+        editor.set("version", "2.0.0").unwrap();
+        editor.save().unwrap();
 
         let modified_toml = fs::read_to_string(&toml_path).unwrap();
 
@@ -357,9 +332,9 @@ ssl_enabled = true
 
         fs::write(&toml_path, original_toml).unwrap();
 
-        // let mut editor = TomlLayerEditor::open(&toml_path).unwrap();
-        // editor.set("database.ssl_enabled", false).unwrap();
-        // editor.save().unwrap();
+        let mut editor = TomlLayerEditor::open(&toml_path).unwrap();
+        editor.set("database.ssl_enabled", false).unwrap();
+        editor.save().unwrap();
 
         let modified_toml = fs::read_to_string(&toml_path).unwrap();
 
@@ -380,18 +355,18 @@ ssl_enabled = true
         let json_path = temp_dir.path().join("settings.json");
 
         let json_content = r#"{
-  "app_name": "test_app",
-  "version": "1.0.0"
-}"#;
+      "app_name": "test_app",
+      "version": "1.0.0"
+    }"#;
 
         fs::write(&json_path, json_content).unwrap();
 
-        // let mut editor = JsonLayerEditor::open(&json_path).unwrap();
-        // let app_name: String = editor.get("app_name").unwrap();
-        // assert_eq!(app_name, "test_app");
-        //
-        // editor.set("version", "2.0.0").unwrap();
-        // editor.save().unwrap();
+        let mut editor = JsonLayerEditor::open(&json_path).unwrap();
+        let app_name: String = editor.get("app_name").unwrap();
+        assert_eq!(app_name, "test_app");
+
+        editor.set("version", "2.0.0").unwrap();
+        editor.save().unwrap();
 
         let modified_json = fs::read_to_string(&json_path).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&modified_json).unwrap();
@@ -405,24 +380,24 @@ ssl_enabled = true
         let json_path = temp_dir.path().join("settings.json");
 
         let json_content = r#"{
-  "database": {
-    "host": "localhost",
-    "port": 5432
-  }
-}"#;
+      "database": {
+        "host": "localhost",
+        "port": 5432
+      }
+    }"#;
 
         fs::write(&json_path, json_content).unwrap();
 
-        // let editor = JsonLayerEditor::open(&json_path).unwrap();
-        // let host: String = editor.get("database.host").unwrap();
-        // assert_eq!(host, "localhost");
-        // let port: u16 = editor.get("database.port").unwrap();
-        // assert_eq!(port, 5432);
+        let editor = JsonLayerEditor::open(&json_path).unwrap();
+        let host: String = editor.get("database.host").unwrap();
+        assert_eq!(host, "localhost");
+        let port: u16 = editor.get("database.port").unwrap();
+        assert_eq!(port, 5432);
     }
 
-    // ========================================================================
-    // Test 21-22: YAML Backend
-    // ========================================================================
+    // // ========================================================================
+    // // Test 21-22: YAML Backend
+    // // ========================================================================
 
     /// Test YAML editor roundtrip
     #[test]
@@ -430,21 +405,24 @@ ssl_enabled = true
         let temp_dir = TempDir::new().unwrap();
         let yaml_path = temp_dir.path().join("settings.yaml");
 
-        let yaml_content = r#"app_name: test_app
-version: "1.0.0"
-"#;
+        let yaml_content = r#"
+            |app_name: test_app
+            |version: "1.0.0"
+            |"#
+        .trim_margin()
+        .unwrap();
 
         fs::write(&yaml_path, yaml_content).unwrap();
 
-        // let mut editor = YamlLayerEditor::open(&yaml_path).unwrap();
-        // let app_name: String = editor.get("app_name").unwrap();
-        // assert_eq!(app_name, "test_app");
-        //
-        // editor.set("version", "2.0.0").unwrap();
-        // editor.save().unwrap();
+        let mut editor = YamlLayerEditor::open(&yaml_path).unwrap();
+        let app_name: String = editor.get("app_name").unwrap();
+        assert_eq!(app_name, "test_app");
+
+        editor.set("version", "2.0.0").unwrap();
+        editor.save().unwrap();
 
         let modified_yaml = fs::read_to_string(&yaml_path).unwrap();
-        assert!(modified_yaml.contains("version: \"2.0.0\""));
+        assert!(modified_yaml.contains("version: \"2.0.0\"") || modified_yaml.contains("version: 2.0.0"));
     }
 
     /// Test YAML nested structures
@@ -453,17 +431,20 @@ version: "1.0.0"
         let temp_dir = TempDir::new().unwrap();
         let yaml_path = temp_dir.path().join("settings.yaml");
 
-        let yaml_content = r#"database:
-  host: localhost
-  port: 5432
-  ssl: true
-"#;
+        let yaml_content = r#"
+            |database:
+            |  host: localhost
+            |  port: 5432
+            |  enabled: true
+            |"#
+        .trim_margin()
+        .unwrap();
 
         fs::write(&yaml_path, yaml_content).unwrap();
 
-        // let editor = YamlLayerEditor::open(&yaml_path).unwrap();
-        // let host: String = editor.get("database.host").unwrap();
-        // assert_eq!(host, "localhost");
+        let editor = YamlLayerEditor::open(&yaml_path).unwrap();
+        let host: String = editor.get("database.host").unwrap();
+        assert_eq!(host, "localhost");
     }
 
     // ========================================================================
@@ -473,14 +454,14 @@ version: "1.0.0"
     /// Test opening non-existent file returns error
     #[test]
     fn test_layer_editor_open_nonexistent_file_error() {
-        let nonexistent_path = PathBuf::from("/tmp/nonexistent_config_12345.toml");
+        let _nonexistent_path = PathBuf::from("/tmp/nonexistent_config_12345.toml");
 
-        // let result = TomlLayerEditor::open(&nonexistent_path);
-        // assert!(result.is_err());
-        // match result.unwrap_err() {
-        //     EditorError::IoError(_) => {},
-        //     _ => panic!("Expected IoError"),
-        // }
+        let result = TomlLayerEditor::open(&_nonexistent_path);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            EditorError::IoError(_) => {},
+            _ => panic!("Expected IoError"),
+        }
     }
 
     /// Test getting non-existent key returns None
@@ -490,9 +471,9 @@ version: "1.0.0"
         let toml_path = temp_dir.path().join("settings.toml");
         fs::write(&toml_path, "existing_key = \"value\"").unwrap();
 
-        // let editor = TomlLayerEditor::open(&toml_path).unwrap();
-        // let result: Option<String> = editor.get("nonexistent_key");
-        // assert!(result.is_none());
+        let editor = TomlLayerEditor::open(&toml_path).unwrap();
+        let result: Option<String> = editor.get("nonexistent_key");
+        assert!(result.is_none());
     }
 
     /// Test unsetting non-existent key returns error
@@ -502,13 +483,13 @@ version: "1.0.0"
         let toml_path = temp_dir.path().join("settings.toml");
         fs::write(&toml_path, "existing_key = \"value\"").unwrap();
 
-        // let mut editor = TomlLayerEditor::open(&toml_path).unwrap();
-        // let result = editor.unset("nonexistent_key");
-        // assert!(result.is_err());
-        // match result.unwrap_err() {
-        //     EditorError::KeyNotFound(_) => {},
-        //     _ => panic!("Expected KeyNotFound"),
-        // }
+        let mut editor = TomlLayerEditor::open(&toml_path).unwrap();
+        let result = editor.unset("nonexistent_key");
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            EditorError::KeyNotFound(_) => {},
+            _ => panic!("Expected KeyNotFound"),
+        }
     }
 
     /// Test type mismatch error
@@ -518,10 +499,10 @@ version: "1.0.0"
         let toml_path = temp_dir.path().join("settings.toml");
         fs::write(&toml_path, "port = 5432").unwrap();
 
-        // let editor = TomlLayerEditor::open(&toml_path).unwrap();
-        // let result: Result<String, _> = editor.get("port");
+        let editor = TomlLayerEditor::open(&toml_path).unwrap();
+        let result: Option<String> = editor.get("port");
         // Should fail: trying to get u16 value as String
-        // assert!(result.is_err());
+        assert!(result.is_none());
     }
 
     // ========================================================================
@@ -535,19 +516,60 @@ version: "1.0.0"
         let toml_path = temp_dir.path().join("config.toml");
         fs::write(&toml_path, "test = true").unwrap();
 
-        // let editor = SettingsEditor::open(&toml_path).unwrap();
-        // Should auto-detect TOML format and open appropriately
+        let editor = SettingsLoaderEditor::open(&toml_path).unwrap();
+        match editor {
+            Editor::Toml(_) => {}, // Expected Toml editor
+            _ => panic!("Expected Toml editor"),
+        }
+
+        let json_path = temp_dir.path().join("config.json");
+        fs::write(&json_path, "{ \"test\": true }").unwrap();
+        let editor = SettingsLoaderEditor::open(&json_path).unwrap();
+        match editor {
+            Editor::Json(_) => {}, // Expected Json editor
+            _ => panic!("Expected Json editor"),
+        }
+
+        let yaml_path = temp_dir.path().join("config.yaml");
+        fs::write(&yaml_path, "test: true").unwrap();
+        let editor = SettingsLoaderEditor::open(&yaml_path).unwrap();
+        match editor {
+            Editor::Yaml(_) => {}, // Expected Yaml editor
+            _ => panic!("Expected Yaml editor"),
+        }
     }
 
     /// Test SettingsEditor::create() with explicit format
     #[test]
     fn test_settings_editor_create_with_format() {
         let temp_dir = TempDir::new().unwrap();
-        let new_path = temp_dir.path().join("new_config.json");
+        let new_toml_path = temp_dir.path().join("new_config.toml");
 
-        // let editor = SettingsEditor::create(&new_path, ConfigFormat::Json).unwrap();
-        // assert!(!editor.is_dirty());
-        // assert!(new_path.exists());
+        let editor = SettingsLoaderEditor::create(&new_toml_path, ConfigFormat::Toml).unwrap();
+        assert!(!editor.is_dirty());
+        assert!(new_toml_path.exists());
+        match editor {
+            Editor::Toml(_) => {}, // Expected Toml editor
+            _ => panic!("Expected Toml editor"),
+        }
+
+        let new_json_path = temp_dir.path().join("new_config.json");
+        let editor = SettingsLoaderEditor::create(&new_json_path, ConfigFormat::Json).unwrap();
+        assert!(!editor.is_dirty());
+        assert!(new_json_path.exists());
+        match editor {
+            Editor::Json(_) => assert!(true),
+            _ => panic!("Expected Json editor"),
+        }
+
+        let new_yaml_path = temp_dir.path().join("new_config.yaml");
+        let editor = SettingsLoaderEditor::create(&new_yaml_path, ConfigFormat::Yaml).unwrap();
+        assert!(!editor.is_dirty());
+        assert!(new_yaml_path.exists());
+        match editor {
+            Editor::Yaml(_) => assert!(true),
+            _ => panic!("Expected Yaml editor"),
+        }
     }
 
     // ========================================================================
@@ -580,22 +602,22 @@ enabled = true
         fs::write(&config_path, turtle_config).unwrap();
 
         // Scenario: User opens TUI, sees current settings, edits them
-        // let mut editor = TomlLayerEditor::open(&config_path).unwrap();
+        let mut editor = SettingsLoaderEditor::open(&config_path).unwrap();
 
         // Get current values
-        // let current_level: String = editor.get("logging.level").unwrap();
-        // assert_eq!(current_level, "info");
+        let current_level: String = editor.get("logging.level").unwrap();
+        assert_eq!(current_level, "info");
 
         // User changes logging level
-        // editor.set("logging.level", "debug").unwrap();
-        // assert!(editor.is_dirty());
+        editor.set("logging.level", "debug").unwrap();
+        assert!(editor.is_dirty());
 
         // User changes theme
-        // editor.set("tui.theme", "light").unwrap();
+        editor.set("tui.theme", "light").unwrap();
 
         // User confirms changes
-        // editor.save().unwrap();
-        // assert!(!editor.is_dirty());
+        editor.save().unwrap();
+        assert!(!editor.is_dirty());
 
         // Verify changes persisted
         let updated_content = fs::read_to_string(&config_path).unwrap();

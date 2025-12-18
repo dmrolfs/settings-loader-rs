@@ -1,8 +1,11 @@
-//! Settings editor factory trait for creating layer editors.
-
+#![cfg(feature = "editor")]
+/// Factory trait for creating layer editors with format auto-detection.
 use std::path::Path;
 
-use super::{ConfigFormat, EditorError, LayerEditor};
+use super::json::JsonLayerEditor;
+use super::toml::TomlLayerEditor;
+use super::yaml::YamlLayerEditor;
+use super::{ConfigFormat, Editor, EditorError, LayerEditor};
 
 /// Factory trait for creating layer editors with format auto-detection.
 ///
@@ -12,14 +15,14 @@ use super::{ConfigFormat, EditorError, LayerEditor};
 /// # Example
 ///
 /// ```ignore
-/// use settings_loader::editor::SettingsEditor;
+/// use settings_loader::editor::{SettingsEditor, SettingsLoaderEditor, ConfigFormat};
 /// use std::path::Path;
 ///
 /// // Open existing file with auto-detected format
-/// let editor = SettingsEditor::open(Path::new("settings.toml"))?;
+/// let editor = SettingsLoaderEditor::open(Path::new("settings.toml"))?;
 ///
 /// // Create new file with explicit format
-/// let editor = SettingsEditor::create(
+/// let editor = SettingsLoaderEditor::create(
 ///     Path::new("new_config.json"),
 ///     ConfigFormat::Json
 /// )?;
@@ -42,7 +45,9 @@ pub trait SettingsEditor {
     /// # Example
     ///
     /// ```ignore
-    /// let editor = SettingsEditor::open(Path::new("settings.toml"))?;
+    /// use settings_loader::editor::{SettingsEditor, SettingsLoaderEditor};
+    /// use std::path::Path;
+    /// let editor = SettingsLoaderEditor::open(Path::new("settings.toml"))?;
     /// ```
     fn open(path: &Path) -> Result<Self::Editor, EditorError>;
 
@@ -58,12 +63,41 @@ pub trait SettingsEditor {
     /// # Example
     ///
     /// ```ignore
-    /// use settings_loader::editor::ConfigFormat;
-    ///
-    /// let editor = SettingsEditor::create(
+    /// use settings_loader::editor::{SettingsEditor, SettingsLoaderEditor, ConfigFormat};
+    /// use std::path::Path;
+    /// let editor = SettingsLoaderEditor::create(
     ///     Path::new("config.yaml"),
     ///     ConfigFormat::Yaml
     /// )?;
     /// ```
     fn create(path: &Path, format: ConfigFormat) -> Result<Self::Editor, EditorError>;
+}
+
+/// Concrete implementation of `SettingsEditor` that acts as a factory
+/// for creating and opening various `LayerEditor` types.
+#[derive(Debug, Default)]
+pub struct SettingsLoaderEditor;
+
+impl SettingsEditor for SettingsLoaderEditor {
+    type Editor = Editor;
+
+    fn open(path: &Path) -> Result<Self::Editor, EditorError> {
+        let format = ConfigFormat::from_path(path).ok_or(EditorError::FormatMismatch)?;
+
+        match format {
+            ConfigFormat::Toml => Ok(Editor::Toml(TomlLayerEditor::open(path)?)),
+            ConfigFormat::Json => Ok(Editor::Json(JsonLayerEditor::open(path)?)),
+            ConfigFormat::Yaml => Ok(Editor::Yaml(YamlLayerEditor::open(path)?)),
+            // _ => Err(EditorError::FormatMismatch), // Hjson and Ron are not yet supported for editing
+        }
+    }
+
+    fn create(path: &Path, format: ConfigFormat) -> Result<Self::Editor, EditorError> {
+        match format {
+            ConfigFormat::Toml => Ok(Editor::Toml(TomlLayerEditor::create(path)?)),
+            ConfigFormat::Json => Ok(Editor::Json(JsonLayerEditor::create(path)?)),
+            ConfigFormat::Yaml => Ok(Editor::Yaml(YamlLayerEditor::create(path)?)),
+            // _ => Err(EditorError::FormatMismatch), // Hjson and Ron are not yet supported for editing
+        }
+    }
 }

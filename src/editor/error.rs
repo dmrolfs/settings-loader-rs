@@ -52,10 +52,7 @@ impl EditorError {
 
     /// Create a TypeMismatch error
     pub fn type_mismatch(expected: impl Into<String>, actual: impl Into<String>) -> Self {
-        EditorError::TypeMismatch {
-            expected: expected.into(),
-            actual: actual.into(),
-        }
+        EditorError::TypeMismatch { expected: expected.into(), actual: actual.into() }
     }
 }
 
