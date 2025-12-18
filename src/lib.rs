@@ -90,5 +90,8 @@ pub mod metadata;
 #[cfg(feature = "metadata")]
 pub mod introspection;
 
+#[cfg(feature = "metadata")]
+pub mod validation;
+
 #[cfg(test)]
 mod tracing;
