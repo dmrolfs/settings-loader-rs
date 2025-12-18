@@ -1,3 +1,5 @@
+#![allow(clippy::multiple_crate_versions)]
+
 //! A library for managing and loading application settings from multiple sources.
 //!
 //! This library provides functionality to load and merge configuration values from
@@ -79,6 +81,8 @@ pub mod settings_loader;
 
 #[cfg(feature = "editor")]
 pub mod editor;
+#[cfg(feature = "editor")]
+pub use editor::{ConfigFormat, Editor, EditorError, LayerEditor, SettingsEditor, SettingsLoaderEditor};
 
 #[cfg(test)]
 mod tracing;
