@@ -329,6 +329,178 @@ pub trait SettingsIntrospection {
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::time::Instant;
+
+    // ========================================================================
+    // HELPER FUNCTIONS - Reusable test utilities
+    // ========================================================================
+
+    /// Create a basic test metadata for use in multiple tests
+    fn create_simple_metadata() -> SettingMetadata {
+        SettingMetadata {
+            key: "api_url".to_string(),
+            label: "API URL".to_string(),
+            description: "API endpoint URL".to_string(),
+            setting_type: SettingType::Url {
+                schemes: vec!["http".to_string(), "https".to_string()],
+            },
+            default: Some(json!("http://localhost:8080")),
+            constraints: vec![Constraint::Required],
+            visibility: Visibility::Public,
+            group: Some("api".to_string()),
+        }
+    }
+
+    /// Create a complex nested settings metadata
+    fn create_nested_object_metadata() -> SettingMetadata {
+        SettingMetadata {
+            key: "database".to_string(),
+            label: "Database Config".to_string(),
+            description: "Database connection configuration".to_string(),
+            setting_type: SettingType::Object {
+                fields: vec![
+                    SettingMetadata {
+                        key: "database.host".to_string(),
+                        label: "Database Host".to_string(),
+                        description: "Database server hostname".to_string(),
+                        setting_type: SettingType::String {
+                            pattern: None,
+                            min_length: Some(1),
+                            max_length: Some(255),
+                        },
+                        default: Some(json!("localhost")),
+                        constraints: vec![Constraint::Required],
+                        visibility: Visibility::Public,
+                        group: Some("database".to_string()),
+                    },
+                    SettingMetadata {
+                        key: "database.port".to_string(),
+                        label: "Database Port".to_string(),
+                        description: "Database server port".to_string(),
+                        setting_type: SettingType::Integer {
+                            min: Some(1),
+                            max: Some(65535),
+                        },
+                        default: Some(json!(5432)),
+                        constraints: vec![Constraint::Range {
+                            min: 1.0,
+                            max: 65535.0,
+                        }],
+                        visibility: Visibility::Public,
+                        group: Some("database".to_string()),
+                    },
+                    SettingMetadata {
+                        key: "database.password".to_string(),
+                        label: "Database Password".to_string(),
+                        description: "Database authentication password".to_string(),
+                        setting_type: SettingType::Secret,
+                        default: None,
+                        constraints: vec![Constraint::Required],
+                        visibility: Visibility::Secret,
+                        group: Some("database".to_string()),
+                    },
+                ],
+            },
+            default: None,
+            constraints: vec![],
+            visibility: Visibility::Public,
+            group: Some("database".to_string()),
+        }
+    }
+
+    /// Create a test schema with many settings for performance testing
+    fn create_large_schema(count: usize) -> ConfigSchema {
+        let mut settings = Vec::new();
+
+        for i in 0..count {
+            let group_name = if i % 3 == 0 {
+                "group_a"
+            } else if i % 3 == 1 {
+                "group_b"
+            } else {
+                "group_c"
+            };
+
+            let visibility = match i % 4 {
+                0 => Visibility::Public,
+                1 => Visibility::Hidden,
+                2 => Visibility::Secret,
+                _ => Visibility::Advanced,
+            };
+
+            settings.push(SettingMetadata {
+                key: format!("setting_{}", i),
+                label: format!("Setting {}", i),
+                description: format!("Test setting number {}", i),
+                setting_type: SettingType::String {
+                    pattern: None,
+                    min_length: None,
+                    max_length: None,
+                },
+                default: if i % 2 == 0 {
+                    Some(json!(format!("value_{}", i)))
+                } else {
+                    None
+                },
+                constraints: if i % 5 == 0 {
+                    vec![Constraint::Required]
+                } else {
+                    vec![]
+                },
+                visibility,
+                group: Some(group_name.to_string()),
+            });
+        }
+
+        ConfigSchema {
+            name: "large-app".to_string(),
+            version: "1.0.0".to_string(),
+            settings,
+            groups: vec![
+                SettingGroup {
+                    name: "group_a".to_string(),
+                    label: "Group A".to_string(),
+                    description: "First group".to_string(),
+                    settings: (0..count)
+                        .filter(|i| i % 3 == 0)
+                        .map(|i| format!("setting_{}", i))
+                        .collect(),
+                },
+                SettingGroup {
+                    name: "group_b".to_string(),
+                    label: "Group B".to_string(),
+                    description: "Second group".to_string(),
+                    settings: (0..count)
+                        .filter(|i| i % 3 == 1)
+                        .map(|i| format!("setting_{}", i))
+                        .collect(),
+                },
+                SettingGroup {
+                    name: "group_c".to_string(),
+                    label: "Group C".to_string(),
+                    description: "Third group".to_string(),
+                    settings: (0..count)
+                        .filter(|i| i % 3 == 2)
+                        .map(|i| format!("setting_{}", i))
+                        .collect(),
+                },
+            ],
+        }
+    }
+
+    /// Create an empty schema for edge case testing
+    fn create_empty_schema() -> ConfigSchema {
+        ConfigSchema {
+            name: "empty-app".to_string(),
+            version: "1.0.0".to_string(),
+            settings: vec![],
+            groups: vec![],
+        }
+    }
+
+    // ========================================================================
+    // TEST IMPLEMENTATIONS
+    // ========================================================================
 
     /// Test implementation for testing purposes
     struct TestSettings;
@@ -371,6 +543,53 @@ mod tests {
             }
         }
     }
+
+    /// Test implementation with complex nested objects
+    struct NestedTestSettings;
+
+    impl SettingsIntrospection for NestedTestSettings {
+        fn get_schema(&self) -> ConfigSchema {
+            ConfigSchema {
+                name: "nested-app".to_string(),
+                version: "1.0.0".to_string(),
+                settings: vec![create_nested_object_metadata()],
+                groups: vec![SettingGroup {
+                    name: "database".to_string(),
+                    label: "Database Settings".to_string(),
+                    description: "Database configuration".to_string(),
+                    settings: vec![
+                        "database.host".to_string(),
+                        "database.port".to_string(),
+                        "database.password".to_string(),
+                    ],
+                }],
+            }
+        }
+    }
+
+    /// Test implementation with empty schema
+    struct EmptyTestSettings;
+
+    impl SettingsIntrospection for EmptyTestSettings {
+        fn get_schema(&self) -> ConfigSchema {
+            create_empty_schema()
+        }
+    }
+
+    /// Test implementation with large schema
+    struct LargeTestSettings {
+        count: usize,
+    }
+
+    impl SettingsIntrospection for LargeTestSettings {
+        fn get_schema(&self) -> ConfigSchema {
+            create_large_schema(self.count)
+        }
+    }
+
+    // ========================================================================
+    // ORIGINAL TESTS
+    // ========================================================================
 
     #[test]
     fn test_get_schema_returns_full_schema() {
@@ -431,5 +650,249 @@ mod tests {
     fn test_get_settings_count() {
         let settings = TestSettings;
         assert_eq!(settings.get_settings_count(), 2);
+    }
+
+    // ========================================================================
+    // NEW ENHANCEMENT TESTS
+    // ========================================================================
+
+    /// Test introspection with complex nested objects
+    #[test]
+    fn test_introspection_with_nested_objects_enhanced() {
+        let settings = NestedTestSettings;
+        let schema = settings.get_schema();
+
+        assert_eq!(schema.settings.len(), 1);
+        let database_setting = &schema.settings[0];
+        assert_eq!(database_setting.key, "database");
+
+        if let SettingType::Object { fields } = &database_setting.setting_type {
+            assert_eq!(fields.len(), 3);
+            assert_eq!(fields[0].key, "database.host");
+            assert_eq!(fields[1].key, "database.port");
+            assert_eq!(fields[2].key, "database.password");
+        } else {
+            panic!("Expected Object type");
+        }
+    }
+
+    /// Test nested object fields have correct constraints
+    #[test]
+    fn test_nested_object_constraints() {
+        let settings = NestedTestSettings;
+        let database_setting = settings.get_setting("database").unwrap();
+
+        if let SettingType::Object { fields } = &database_setting.setting_type {
+            let port_field = &fields[1];
+            assert!(!port_field.constraints.is_empty());
+            assert!(port_field.constraints.iter().any(|c| matches!(c, Constraint::Range { .. })));
+        } else {
+            panic!("Expected Object type");
+        }
+    }
+
+    /// Test empty metadata array edge case
+    #[test]
+    fn test_empty_metadata_edge_case() {
+        let settings = EmptyTestSettings;
+        let schema = settings.get_schema();
+
+        assert!(schema.settings.is_empty());
+        assert!(schema.groups.is_empty());
+        assert_eq!(settings.get_settings_count(), 0);
+    }
+
+    /// Test queries on empty schema
+    #[test]
+    fn test_queries_on_empty_schema() {
+        let settings = EmptyTestSettings;
+
+        assert!(settings.get_public_settings().is_empty());
+        assert!(settings.get_secret_settings().is_empty());
+        assert!(settings.get_settings_in_group("any").is_empty());
+        assert_eq!(settings.search_settings("test").len(), 0);
+    }
+
+    /// Test large schema performance
+    #[test]
+    fn test_large_schema_performance() {
+        let settings = LargeTestSettings { count: 100 };
+        let start = Instant::now();
+
+        let _schema = settings.get_schema();
+        let _public = settings.get_public_settings();
+        let _secret = settings.get_secret_settings();
+        let _group_a = settings.get_settings_in_group("group_a");
+        let _search = settings.search_settings("setting");
+
+        let elapsed = start.elapsed();
+
+        // Should complete in reasonable time (< 100ms for 100 settings)
+        assert!(elapsed.as_millis() < 100, "Large schema query took {:?}", elapsed);
+    }
+
+    /// Test settings_in_group with overlapping group assignments
+    #[test]
+    fn test_settings_in_group_with_multiple_groups() {
+        let settings = LargeTestSettings { count: 30 };
+
+        let group_a = settings.get_settings_in_group("group_a");
+        let group_b = settings.get_settings_in_group("group_b");
+        let group_c = settings.get_settings_in_group("group_c");
+
+        // Each group should have approximately 10 settings (30/3)
+        assert!(!group_a.is_empty());
+        assert!(!group_b.is_empty());
+        assert!(!group_c.is_empty());
+
+        // No overlap between groups
+        let keys_a: Vec<_> = group_a.iter().map(|s| &s.key).collect();
+        for setting_b in &group_b {
+            assert!(!keys_a.contains(&&setting_b.key));
+        }
+    }
+
+    /// Test visibility distribution with large schema
+    #[test]
+    fn test_visibility_distribution_large_schema() {
+        let settings = LargeTestSettings { count: 100 };
+        let distribution = settings.get_visibility_distribution();
+
+        // With 100 settings and round-robin visibility assignment,
+        // we should have roughly equal distribution
+        let public = distribution.get("public").unwrap_or(&0);
+        let secret = distribution.get("secret").unwrap_or(&0);
+
+        assert!(*public > 0);
+        assert!(*secret > 0);
+    }
+
+    /// Test type distribution reporting
+    #[test]
+    fn test_type_distribution_reporting() {
+        let settings = LargeTestSettings { count: 50 };
+        let distribution = settings.get_type_distribution();
+
+        // All settings in large test are String type
+        assert!(distribution.contains_key("string"));
+        let string_count = distribution.get("string").unwrap_or(&0);
+        assert_eq!(*string_count, 50);
+    }
+
+    /// Test constraint statistics with large schema
+    #[test]
+    fn test_constraint_statistics_large_schema() {
+        let settings = LargeTestSettings { count: 50 };
+        let stats = settings.get_constraint_statistics();
+
+        // With 50 settings, every 5th has Required constraint (10 total)
+        let required_count = stats.get("required").unwrap_or(&0);
+        assert_eq!(*required_count, 10);
+    }
+
+    /// Test trait object usage
+    #[test]
+    fn test_trait_object_usage() {
+        let introspector: Box<dyn SettingsIntrospection> = Box::new(TestSettings);
+
+        let schema = introspector.get_schema();
+        assert_eq!(schema.name, "test-app");
+
+        let settings = introspector.get_public_settings();
+        assert_eq!(settings.len(), 1);
+    }
+
+    /// Test multiple implementations with same schema
+    #[test]
+    fn test_multiple_introspection_implementations() {
+        let impl1 = TestSettings;
+        let impl2 = NestedTestSettings;
+
+        // Both should be able to introspect
+        let schema1 = impl1.get_schema();
+        let schema2 = impl2.get_schema();
+
+        assert!(!schema1.name.is_empty());
+        assert!(!schema2.name.is_empty());
+
+        // Different schemas
+        assert_ne!(schema1.name, schema2.name);
+    }
+
+    /// Test special characters in keys
+    #[test]
+    fn test_settings_with_special_characters_in_keys() {
+        let settings = TestSettings;
+
+        // Underscore should work in keys
+        let metadata = create_simple_metadata();
+        assert_eq!(metadata.key, "api_url");
+        assert!(metadata.key.contains('_'));
+
+        // Verify get_setting works with underscores
+        let api_url = settings.get_setting("api_url");
+        assert!(api_url.is_some());
+    }
+
+    /// Test search with special characters
+    #[test]
+    fn test_search_with_dotted_keys() {
+        let settings = NestedTestSettings;
+        let results = settings.search_settings("database");
+
+        // Should find settings with "database" in key, label, or description
+        assert!(!results.is_empty());
+    }
+
+    /// Test advanced settings filtering
+    #[test]
+    fn test_get_advanced_settings() {
+        let settings = LargeTestSettings { count: 40 };
+        let advanced = settings.get_advanced_settings();
+
+        // With 40 settings and 4-way visibility split, expect ~10 advanced
+        assert!(!advanced.is_empty());
+        for setting in advanced {
+            assert_eq!(setting.visibility, Visibility::Advanced);
+        }
+    }
+
+    /// Test hidden settings filtering
+    #[test]
+    fn test_get_hidden_settings() {
+        let settings = LargeTestSettings { count: 40 };
+        let hidden = settings.get_hidden_settings();
+
+        // With 40 settings and 4-way visibility split, expect ~10 hidden
+        assert!(!hidden.is_empty());
+        for setting in hidden {
+            assert_eq!(setting.visibility, Visibility::Hidden);
+        }
+    }
+
+    /// Test settings with defaults
+    #[test]
+    fn test_get_settings_with_defaults() {
+        let settings = LargeTestSettings { count: 20 };
+        let with_defaults = settings.get_settings_with_defaults();
+
+        // Every other setting has a default
+        assert!(!with_defaults.is_empty());
+        for setting in with_defaults {
+            assert!(setting.default.is_some());
+        }
+    }
+
+    /// Test constraint filtering
+    #[test]
+    fn test_get_settings_with_specific_constraint() {
+        let settings = LargeTestSettings { count: 50 };
+        let required = settings.get_settings_with_constraint(&Constraint::Required);
+
+        // Every 5th setting has Required constraint
+        assert!(!required.is_empty());
+        for setting in required {
+            assert!(setting.constraints.contains(&Constraint::Required));
+        }
     }
 }
