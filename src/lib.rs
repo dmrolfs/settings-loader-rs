@@ -84,5 +84,8 @@ pub mod editor;
 #[cfg(feature = "editor")]
 pub use editor::{ConfigFormat, Editor, EditorError, LayerEditor, SettingsEditor, SettingsLoaderEditor};
 
+#[cfg(feature = "metadata")]
+pub mod metadata;
+
 #[cfg(test)]
 mod tracing;
