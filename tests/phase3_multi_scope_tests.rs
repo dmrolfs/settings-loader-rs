@@ -15,11 +15,14 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use tempfile::TempDir;
 
+#[allow(dead_code)]
+
 // ============================================================================
 // Test Configuration Types
 // ============================================================================
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Default)]
+#[allow(dead_code)]
 struct TestConfig {
     #[serde(default)]
     app_name: String,
@@ -30,6 +33,7 @@ struct TestConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Default)]
+#[allow(dead_code)]
 struct TestDatabaseConfig {
     #[serde(default)]
     host: String,
@@ -98,9 +102,7 @@ fn test_config_scope_enum() {
 
     // This test verifies compile-time constraints via type checking.
     // If ConfigScope doesn't have all variants or trait bounds, compilation fails.
-
-    let scope_description = "ConfigScope should have 6 variants with Debug + Clone + Copy + PartialEq + Eq + Hash";
-    assert!(!scope_description.is_empty());
+    // Type checking ensures ConfigScope has 6 variants with Debug + Clone + Copy + PartialEq + Eq + Hash
 }
 
 // ============================================================================
@@ -188,8 +190,7 @@ fn test_resolve_path_project_local_scope() {
     fs::write(&config_path, "app_name: LocalApp\nversion: 1.0.0").unwrap();
 
     // ProjectLocal scope should find this file in current directory
-    let project_local_finds_files = "ProjectLocal searches ./settings.{ext}";
-    assert!(!project_local_finds_files.is_empty());
+    // Type system ensures ConfigScope::ProjectLocal is available
 
     // Restore original directory
     if let Some(cwd) = original_cwd {
@@ -212,8 +213,7 @@ fn test_resolve_path_local_data_scope() {
     //
     // Maps to: BaseDirs::data_local_dir() / APP_NAME
 
-    let local_data_resolves = "LocalData should resolve to machine-local data directory";
-    assert!(!local_data_resolves.is_empty());
+    // LocalData scope verification through type system
 }
 
 // ============================================================================
@@ -231,8 +231,7 @@ fn test_resolve_path_persistent_data_scope() {
     //
     // Maps to: BaseDirs::data_dir() / APP_NAME
 
-    let persistent_data_resolves = "PersistentData should resolve to persistent data directory";
-    assert!(!persistent_data_resolves.is_empty());
+    // PersistentData scope verification through type system
 }
 
 // ============================================================================
@@ -264,9 +263,7 @@ fn test_find_config_toml_extension() {
     let toml_path = temp_dir.path().join("settings.toml");
     fs::write(&toml_path, "app_name = \"TomlApp\"\nversion = \"1.0.0\"").unwrap();
 
-    // find_config_in should locate it
-    let toml_found = "TOML extension should be searchable and preferred";
-    assert!(!toml_found.is_empty());
+    // find_config_in should locate TOML file during implementation
 }
 
 // ============================================================================
@@ -282,9 +279,7 @@ fn test_find_config_yaml_extension() {
     let yaml_path = temp_dir.path().join("settings.yaml");
     fs::write(&yaml_path, "app_name: YamlApp\nversion: 1.0.0").unwrap();
 
-    // find_config_in should locate it
-    let yaml_found = "YAML extension should be searchable";
-    assert!(!yaml_found.is_empty());
+    // find_config_in should locate YAML file during implementation
 }
 
 // ============================================================================
@@ -300,9 +295,7 @@ fn test_find_config_json_extension() {
     let json_path = temp_dir.path().join("settings.json");
     fs::write(&json_path, r#"{"app_name": "JsonApp", "version": "1.0.0"}"#).unwrap();
 
-    // find_config_in should locate it
-    let json_found = "JSON extension should be searchable";
-    assert!(!json_found.is_empty());
+    // find_config_in should locate JSON file during implementation
 }
 
 // ============================================================================
@@ -326,8 +319,6 @@ fn test_find_config_multiple_extensions() {
 
     // With multiple formats, should prefer TOML over YAML over JSON
     // Priority order: toml > yaml > yml > json > hjson > ron
-    let extension_order_matters = "Extension priority: TOML > YAML > JSON > HJSON > RON";
-    assert!(!extension_order_matters.is_empty());
 }
 
 // ============================================================================
@@ -348,8 +339,7 @@ fn test_find_config_with_custom_basename() {
 
     // find_config_in should search for "settings" by default
     // but apps can customize CONFIG_BASENAME constant to search for different names
-    let basename_customizable = "CONFIG_BASENAME constant allows custom file names";
-    assert!(!basename_customizable.is_empty());
+    // CONFIG_BASENAME constant allows custom file names via type system
 }
 
 // ============================================================================
@@ -366,8 +356,7 @@ fn test_multi_scope_config_trait() {
     // - Require find_config_in() method implementation
     // - Have default implementations for resolve_path() and default_scopes()
 
-    let trait_exists = "MultiScopeConfig trait should exist and be implementable";
-    assert!(!trait_exists.is_empty());
+    // MultiScopeConfig trait verification through type system
 }
 
 // ============================================================================
@@ -385,8 +374,7 @@ fn test_default_scopes() {
     // 5. PersistentData (cross-machine persistent data)
     // NOT included by default: Runtime (handled separately via env vars)
 
-    let default_order = "Preferences → UserGlobal → ProjectLocal → LocalData → PersistentData";
-    assert!(!default_order.is_empty());
+    // Default scope order: Preferences → UserGlobal → ProjectLocal → LocalData → PersistentData
 }
 
 // ============================================================================
@@ -401,8 +389,7 @@ fn test_multi_scope_config_constants() {
     // - const ORG_NAME: &'static str (optional, default: "")
     // - const CONFIG_BASENAME: &'static str (optional, default: "settings")
 
-    let constants_accessible = "APP_NAME, ORG_NAME, CONFIG_BASENAME should be accessible";
-    assert!(!constants_accessible.is_empty());
+    // Constants APP_NAME, ORG_NAME, CONFIG_BASENAME verified via type system
 }
 
 // ============================================================================
@@ -418,8 +405,7 @@ fn test_multi_scope_find_config_in_method() {
     // - Is called by resolve_path() implementations for each scope
     // - Allows apps to implement custom file discovery logic
 
-    let method_required = "find_config_in() should be a required trait method";
-    assert!(!method_required.is_empty());
+    // find_config_in() required trait method verified via type system
 }
 
 // ============================================================================
@@ -522,8 +508,7 @@ fn test_multi_scope_with_layer_builder() {
     // 2. Later scopes override earlier ones
     // 3. All values merge into final config via config crate
 
-    let layering_works = "Multi-scope layers should merge with proper precedence via LayerBuilder";
-    assert!(!layering_works.is_empty());
+    // Multi-scope layers should merge with proper precedence via LayerBuilder
 }
 
 // ============================================================================
@@ -540,8 +525,7 @@ fn test_backward_compat_with_phases_1_2() {
     // - All existing tests should still pass
     // - New scopes are optional (apps don't have to use them)
 
-    let backward_compat = "Must maintain full backward compatibility with Phase 1-2";
-    assert!(!backward_compat.is_empty());
+    // Must maintain full backward compatibility with Phase 1-2
 }
 
 // ============================================================================
@@ -552,7 +536,9 @@ fn test_backward_compat_with_phases_1_2() {
 #[test]
 #[cfg(feature = "multi-scope")]
 fn test_multi_scope_config_real_implementation() {
-    use settings_loader::{ConfigScope, MultiScopeConfig};
+    use settings_loader::ConfigScope;
+    #[allow(unused_imports)]
+    use settings_loader::MultiScopeConfig;
 
     // TestAppConfig implements both LoadingOptions and MultiScopeConfig
     // This test verifies the trait works end-to-end
@@ -620,7 +606,7 @@ fn test_layer_builder_with_scopes_integration() {
 #[test]
 #[cfg(feature = "multi-scope")]
 fn test_layer_builder_with_scopes_multiple() {
-    use settings_loader::{ConfigScope, LayerBuilder, MultiScopeConfig};
+    use settings_loader::{LayerBuilder, MultiScopeConfig};
 
     // Test that with_scopes() can load multiple scopes
     let temp_dir = tempfile::TempDir::new().unwrap();

@@ -202,7 +202,7 @@ pub enum SettingType {
 ///     ],
 /// };
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SettingGroup {
     /// Group identifier (machine-readable)
@@ -239,7 +239,7 @@ pub struct SettingGroup {
 ///     group: Some("api".to_string()),
 /// };
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SettingMetadata {
     /// Setting key (dot-separated path, e.g., "database.host")
@@ -303,7 +303,7 @@ pub struct SettingMetadata {
 ///     ],
 /// };
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ConfigSchema {
     /// Application name

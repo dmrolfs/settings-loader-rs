@@ -1,12 +1,9 @@
 //! Phase 5.1: Core Metadata Types - TDD Test Suite
-//! 
+//!
 //! Tests for SettingMetadata, SettingType, Constraint, Visibility, ConfigSchema, and SettingGroup
-//! 
+//!
 //! This is the RED phase of TDD - tests are written first and are expected to fail
 //! until the types are implemented in src/metadata.rs
-
-use serde_json::json;
-use std::time::Duration;
 
 #[cfg(feature = "metadata")]
 use settings_loader::metadata::*;
@@ -123,7 +120,7 @@ fn test_constraint_partial_eq() {
     // let c1 = Constraint::Required;
     // let c2 = Constraint::Required;
     // assert_eq!(c1, c2);
-    // 
+    //
     // let c3 = Constraint::Pattern("test".to_string());
     // assert_ne!(c1, c3);
 }
@@ -332,7 +329,7 @@ fn test_setting_type_partial_eq() {
     // let st1 = SettingType::Boolean;
     // let st2 = SettingType::Boolean;
     // assert_eq!(st1, st2);
-    // 
+    //
     // let st3 = SettingType::Secret;
     // assert_ne!(st1, st3);
 }
@@ -621,11 +618,11 @@ fn test_nested_object_type_with_fields() {
     //     visibility: Visibility::Public,
     //     group: None,
     // };
-    // 
+    //
     // let object_type = SettingType::Object {
     //     fields: vec![inner],
     // };
-    // 
+    //
     // assert!(matches!(object_type, SettingType::Object { .. }));
 }
 
@@ -668,7 +665,7 @@ fn test_complex_settings_schema() {
     //         },
     //     ],
     // };
-    // 
+    //
     // assert_eq!(schema.settings.len(), 2);
     // assert_eq!(schema.groups.len(), 1);
 }
@@ -684,7 +681,7 @@ fn test_visibility_all_variants_distinct() {
     // let hidden = Visibility::Hidden;
     // let secret = Visibility::Secret;
     // let advanced = Visibility::Advanced;
-    // 
+    //
     // assert_ne!(public, hidden);
     // assert_ne!(public, secret);
     // assert_ne!(public, advanced);
@@ -722,7 +719,7 @@ fn test_setting_type_string_all_constraints() {
     //     min_length: Some(1),
     //     max_length: Some(255),
     // };
-    // 
+    //
     // if let SettingType::String { pattern, min_length, max_length } = st {
     //     assert!(pattern.is_some());
     //     assert!(min_length.is_some());
@@ -738,7 +735,7 @@ fn test_setting_type_url_many_schemes() {
     //     "wss".to_string(), "ftp".to_string(), "ftps".to_string(),
     // ];
     // let st = SettingType::Url { schemes };
-    // 
+    //
     // if let SettingType::Url { schemes: ref s } = st {
     //     assert_eq!(s.len(), 6);
     // }
@@ -750,9 +747,9 @@ fn test_setting_type_enum_many_variants() {
     // let variants: Vec<String> = (0..50)
     //     .map(|i| format!("variant_{}", i))
     //     .collect();
-    // 
+    //
     // let st = SettingType::Enum { variants: variants.clone() };
-    // 
+    //
     // if let SettingType::Enum { variants: ref v } = st {
     //     assert_eq!(v.len(), 50);
     // }
@@ -766,25 +763,25 @@ fn test_setting_type_array_deeply_nested() {
     //     min_length: None,
     //     max_length: None,
     // };
-    // 
+    //
     // let level1 = SettingType::Array {
     //     element_type: Box::new(inner),
     //     min_items: None,
     //     max_items: None,
     // };
-    // 
+    //
     // let level2 = SettingType::Array {
     //     element_type: Box::new(level1),
     //     min_items: None,
     //     max_items: None,
     // };
-    // 
+    //
     // let level3 = SettingType::Array {
     //     element_type: Box::new(level2),
     //     min_items: Some(1),
     //     max_items: Some(100),
     // };
-    // 
+    //
     // assert!(matches!(level3, SettingType::Array { .. }));
 }
 
@@ -807,9 +804,9 @@ fn test_setting_type_object_many_fields() {
     //         group: None,
     //     })
     //     .collect();
-    // 
+    //
     // let st = SettingType::Object { fields };
-    // 
+    //
     // if let SettingType::Object { fields: ref f } = st {
     //     assert_eq!(f.len(), 20);
     // }
@@ -828,7 +825,7 @@ fn test_setting_metadata_all_none_optionals() {
     //     visibility: Visibility::Public,
     //     group: None,
     // };
-    // 
+    //
     // assert!(metadata.default.is_none());
     // assert!(metadata.group.is_none());
 }
@@ -842,7 +839,7 @@ fn test_setting_metadata_complex_default() {
     //         "array": [1, 2, 3]
     //     }
     // });
-    // 
+    //
     // let metadata = SettingMetadata {
     //     key: "complex".to_string(),
     //     label: "Complex".to_string(),
@@ -853,7 +850,7 @@ fn test_setting_metadata_complex_default() {
     //     visibility: Visibility::Public,
     //     group: None,
     // };
-    // 
+    //
     // assert_eq!(metadata.default, Some(default));
 }
 
@@ -876,7 +873,7 @@ fn test_config_schema_many_settings_and_groups() {
     //         group: Some(format!("group_{}", i % 5)),
     //     })
     //     .collect();
-    // 
+    //
     // let groups: Vec<SettingGroup> = (0..5)
     //     .map(|i| SettingGroup {
     //         name: format!("group_{}", i),
@@ -887,14 +884,14 @@ fn test_config_schema_many_settings_and_groups() {
     //             .collect(),
     //     })
     //     .collect();
-    // 
+    //
     // let schema = ConfigSchema {
     //     name: "test-app".to_string(),
     //     version: "1.0.0".to_string(),
     //     settings,
     //     groups,
     // };
-    // 
+    //
     // assert_eq!(schema.settings.len(), 50);
     // assert_eq!(schema.groups.len(), 5);
 }
@@ -911,7 +908,7 @@ fn test_setting_type_all_variants_distinct() {
     // let bool = SettingType::Boolean;
     // let secret = SettingType::Secret;
     // let any = SettingType::Any;
-    // 
+    //
     // assert_ne!(string, int);
     // assert_ne!(int, bool);
     // assert_ne!(bool, secret);
@@ -927,7 +924,7 @@ fn test_constraint_all_variants_distinct() {
     // let length = Constraint::Length { min: 0, max: 10 };
     // let one_of = Constraint::OneOf(vec!["a".to_string(), "b".to_string()]);
     // let custom = Constraint::Custom("validator".to_string());
-    // 
+    //
     // assert_ne!(required, pattern);
     // assert_ne!(pattern, range);
     // assert_ne!(range, length);

@@ -558,7 +558,7 @@ ssl_enabled = true
         assert!(!editor.is_dirty());
         assert!(new_json_path.exists());
         match editor {
-            Editor::Json(_) => assert!(true),
+            Editor::Json(_) => {},
             _ => panic!("Expected Json editor"),
         }
 
@@ -567,7 +567,7 @@ ssl_enabled = true
         assert!(!editor.is_dirty());
         assert!(new_yaml_path.exists());
         match editor {
-            Editor::Yaml(_) => assert!(true),
+            Editor::Yaml(_) => {},
             _ => panic!("Expected Yaml editor"),
         }
     }
