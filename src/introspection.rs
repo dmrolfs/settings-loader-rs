@@ -33,10 +33,10 @@ use std::collections::HashMap;
 /// let introspector: Box<dyn SettingsIntrospection> = Box::new(my_config);
 ///
 /// // Get all public settings
-/// let public_settings = introspector.get_public_settings();
+/// let public_settings = introspector.public_settings();
 ///
 /// // Find settings of a specific type
-/// let strings = introspector.get_settings_of_type(&SettingType::String {
+/// let strings = introspector.settings_of_type(&SettingType::String {
 ///     pattern: None,
 ///     min_length: None,
 ///     max_length: None,
@@ -53,18 +53,19 @@ pub trait SettingsIntrospection {
     /// Get the complete configuration schema
     ///
     /// Returns the full schema including all settings and groups.
-    fn get_schema(&self) -> ConfigSchema;
+    fn schema(&self) -> ConfigSchema;
 
-    /// Get a specific setting by its key
+    /// Get a specific setting metadata by its key
     ///
     /// Returns None if the setting key doesn't exist.
-    fn get_setting(&self, key: &str) -> Option<SettingMetadata> {
-        self.get_schema().settings.into_iter().find(|s| s.key == key)
+    /// Note: This returns metadata about a setting, not its current value.
+    fn get_setting_metadata(&self, key: &str) -> Option<SettingMetadata> {
+        self.schema().settings.into_iter().find(|s| s.key == key)
     }
 
     /// Get all setting groups defined in the schema
-    fn get_groups(&self) -> Vec<SettingGroup> {
-        self.get_schema().groups
+    fn groups(&self) -> Vec<SettingGroup> {
+        self.schema().groups
     }
 
     // ========================================================================
@@ -72,8 +73,8 @@ pub trait SettingsIntrospection {
     // ========================================================================
 
     /// Get all settings with Public visibility
-    fn get_public_settings(&self) -> Vec<SettingMetadata> {
-        self.get_schema()
+    fn public_settings(&self) -> Vec<SettingMetadata> {
+        self.schema()
             .settings
             .into_iter()
             .filter(|s| s.visibility == Visibility::Public)
@@ -81,8 +82,8 @@ pub trait SettingsIntrospection {
     }
 
     /// Get all settings with Hidden visibility
-    fn get_hidden_settings(&self) -> Vec<SettingMetadata> {
-        self.get_schema()
+    fn hidden_settings(&self) -> Vec<SettingMetadata> {
+        self.schema()
             .settings
             .into_iter()
             .filter(|s| s.visibility == Visibility::Hidden)
@@ -90,8 +91,8 @@ pub trait SettingsIntrospection {
     }
 
     /// Get all settings with Secret visibility
-    fn get_secret_settings(&self) -> Vec<SettingMetadata> {
-        self.get_schema()
+    fn secret_settings(&self) -> Vec<SettingMetadata> {
+        self.schema()
             .settings
             .into_iter()
             .filter(|s| s.visibility == Visibility::Secret)
@@ -99,8 +100,8 @@ pub trait SettingsIntrospection {
     }
 
     /// Get all settings with Advanced visibility
-    fn get_advanced_settings(&self) -> Vec<SettingMetadata> {
-        self.get_schema()
+    fn advanced_settings(&self) -> Vec<SettingMetadata> {
+        self.schema()
             .settings
             .into_iter()
             .filter(|s| s.visibility == Visibility::Advanced)
@@ -110,8 +111,8 @@ pub trait SettingsIntrospection {
     /// Get all settings in a specific group by group name
     ///
     /// Returns empty vector if group doesn't exist.
-    fn get_settings_in_group(&self, group_name: &str) -> Vec<SettingMetadata> {
-        let schema = self.get_schema();
+    fn settings_in_group(&self, group_name: &str) -> Vec<SettingMetadata> {
+        let schema = self.schema();
         let group_setting_keys: Vec<String> = schema
             .groups
             .iter()
@@ -133,8 +134,8 @@ pub trait SettingsIntrospection {
     /// Get all settings of a specific type
     ///
     /// Performs type matching on the setting_type field.
-    fn get_settings_of_type(&self, setting_type: &SettingType) -> Vec<SettingMetadata> {
-        self.get_schema()
+    fn settings_of_type(&self, setting_type: &SettingType) -> Vec<SettingMetadata> {
+        self.schema()
             .settings
             .into_iter()
             .filter(|s| s.setting_type == *setting_type)
@@ -142,8 +143,8 @@ pub trait SettingsIntrospection {
     }
 
     /// Get all settings that have a specific constraint
-    fn get_settings_with_constraint(&self, constraint: &Constraint) -> Vec<SettingMetadata> {
-        self.get_schema()
+    fn settings_with_constraint(&self, constraint: &Constraint) -> Vec<SettingMetadata> {
+        self.schema()
             .settings
             .into_iter()
             .filter(|s| s.constraints.iter().any(|c| c == constraint))
@@ -151,8 +152,8 @@ pub trait SettingsIntrospection {
     }
 
     /// Get all settings with no constraints
-    fn get_unconstrained_settings(&self) -> Vec<SettingMetadata> {
-        self.get_schema()
+    fn unconstrained_settings(&self) -> Vec<SettingMetadata> {
+        self.schema()
             .settings
             .into_iter()
             .filter(|s| s.constraints.is_empty())
@@ -160,8 +161,8 @@ pub trait SettingsIntrospection {
     }
 
     /// Get all settings that have multiple constraints (2 or more)
-    fn get_settings_with_multiple_constraints(&self) -> Vec<SettingMetadata> {
-        self.get_schema()
+    fn settings_with_multiple_constraints(&self) -> Vec<SettingMetadata> {
+        self.schema()
             .settings
             .into_iter()
             .filter(|s| s.constraints.len() > 1)
@@ -173,8 +174,8 @@ pub trait SettingsIntrospection {
     // ========================================================================
 
     /// Get all settings that have a default value defined
-    fn get_settings_with_defaults(&self) -> Vec<SettingMetadata> {
-        self.get_schema()
+    fn settings_with_defaults(&self) -> Vec<SettingMetadata> {
+        self.schema()
             .settings
             .into_iter()
             .filter(|s| s.default.is_some())
@@ -182,8 +183,8 @@ pub trait SettingsIntrospection {
     }
 
     /// Get all settings with no default value
-    fn get_settings_without_defaults(&self) -> Vec<SettingMetadata> {
-        self.get_schema()
+    fn settings_without_defaults(&self) -> Vec<SettingMetadata> {
+        self.schema()
             .settings
             .into_iter()
             .filter(|s| s.default.is_none())
@@ -194,7 +195,7 @@ pub trait SettingsIntrospection {
     ///
     /// Returns None if setting doesn't exist or has no default.
     fn get_default_value(&self, key: &str) -> Option<serde_json::Value> {
-        self.get_setting(key).and_then(|s| s.default)
+        self.get_setting_metadata(key).and_then(|s| s.default)
     }
 
     // ========================================================================
@@ -205,14 +206,14 @@ pub trait SettingsIntrospection {
     ///
     /// Returns true if the setting exists, false otherwise.
     fn validate_setting(&self, key: &str) -> bool {
-        self.get_setting(key).is_some()
+        self.get_setting_metadata(key).is_some()
     }
 
     /// Validate that a setting with the given key has the expected type
     ///
     /// Returns true if the setting exists and matches the type.
     fn validate_setting_type(&self, key: &str, expected_type: &SettingType) -> bool {
-        self.get_setting(key)
+        self.get_setting_metadata(key)
             .map(|s| s.setting_type == *expected_type)
             .unwrap_or(false)
     }
@@ -254,7 +255,7 @@ pub trait SettingsIntrospection {
     fn validate_setting_value(
         &self, key: &str, value: &serde_json::Value,
     ) -> Result<ValidationResult, ValidationError> {
-        match self.get_setting(key) {
+        match self.get_setting_metadata(key) {
             Some(metadata) => Ok(metadata.validate(value)),
             None => Err(ValidationError::ConstraintViolation {
                 key: key.to_string(),
@@ -295,7 +296,7 @@ pub trait SettingsIntrospection {
     /// ```
     fn validate_config(&self, config: &serde_json::Value) -> Result<ValidationResult, ValidationError> {
         let mut result = ValidationResult::new();
-        let schema = self.get_schema();
+        let schema = self.schema();
 
         // Validate each setting
         for setting in schema.settings {
@@ -321,7 +322,7 @@ pub trait SettingsIntrospection {
         }
 
         let query_lower = query.to_lowercase();
-        self.get_schema()
+        self.schema()
             .settings
             .into_iter()
             .filter(|s| s.key.to_lowercase().contains(&query_lower) || s.label.to_lowercase().contains(&query_lower))
@@ -337,7 +338,7 @@ pub trait SettingsIntrospection {
         }
 
         let query_lower = query.to_lowercase();
-        self.get_schema()
+        self.schema()
             .settings
             .into_iter()
             .filter(|s| s.description.to_lowercase().contains(&query_lower))
@@ -349,16 +350,16 @@ pub trait SettingsIntrospection {
     // ========================================================================
 
     /// Get the total count of all settings
-    fn get_settings_count(&self) -> usize {
-        self.get_schema().settings.len()
+    fn settings_count(&self) -> usize {
+        self.schema().settings.len()
     }
 
     /// Get distribution of settings by visibility level
     ///
     /// Returns a map of visibility levels to setting counts.
-    fn get_visibility_distribution(&self) -> HashMap<String, usize> {
+    fn visibility_distribution(&self) -> HashMap<String, usize> {
         let mut distribution = HashMap::new();
-        for setting in &self.get_schema().settings {
+        for setting in &self.schema().settings {
             let visibility_str = match setting.visibility {
                 Visibility::Public => "public",
                 Visibility::Hidden => "hidden",
@@ -373,9 +374,9 @@ pub trait SettingsIntrospection {
     /// Get distribution of settings by type
     ///
     /// Returns a map of type names to setting counts.
-    fn get_type_distribution(&self) -> HashMap<String, usize> {
+    fn type_distribution(&self) -> HashMap<String, usize> {
         let mut distribution = HashMap::new();
-        for setting in &self.get_schema().settings {
+        for setting in &self.schema().settings {
             let type_str = match &setting.setting_type {
                 SettingType::String { .. } => "string",
                 SettingType::Integer { .. } => "integer",
@@ -398,9 +399,9 @@ pub trait SettingsIntrospection {
     /// Get statistics about constraints in the configuration
     ///
     /// Returns a map with constraint type names to counts.
-    fn get_constraint_statistics(&self) -> HashMap<String, usize> {
+    fn constraint_statistics(&self) -> HashMap<String, usize> {
         let mut stats = HashMap::new();
-        for setting in &self.get_schema().settings {
+        for setting in &self.schema().settings {
             for constraint in &setting.constraints {
                 let constraint_str = match constraint {
                     Constraint::Pattern(_) => "pattern",
@@ -580,7 +581,7 @@ mod tests {
     struct TestSettings;
 
     impl SettingsIntrospection for TestSettings {
-        fn get_schema(&self) -> ConfigSchema {
+        fn schema(&self) -> ConfigSchema {
             ConfigSchema {
                 name: "test-app".to_string(),
                 version: "1.0.0".to_string(),
@@ -622,7 +623,7 @@ mod tests {
     struct NestedTestSettings;
 
     impl SettingsIntrospection for NestedTestSettings {
-        fn get_schema(&self) -> ConfigSchema {
+        fn schema(&self) -> ConfigSchema {
             ConfigSchema {
                 name: "nested-app".to_string(),
                 version: "1.0.0".to_string(),
@@ -645,7 +646,7 @@ mod tests {
     struct EmptyTestSettings;
 
     impl SettingsIntrospection for EmptyTestSettings {
-        fn get_schema(&self) -> ConfigSchema {
+        fn schema(&self) -> ConfigSchema {
             create_empty_schema()
         }
     }
@@ -656,7 +657,7 @@ mod tests {
     }
 
     impl SettingsIntrospection for LargeTestSettings {
-        fn get_schema(&self) -> ConfigSchema {
+        fn schema(&self) -> ConfigSchema {
             create_large_schema(self.count)
         }
     }
@@ -668,7 +669,7 @@ mod tests {
     #[test]
     fn test_get_schema_returns_full_schema() {
         let settings = TestSettings;
-        let schema = settings.get_schema();
+        let schema = settings.schema();
 
         assert_eq!(schema.name, "test-app");
         assert_eq!(schema.version, "1.0.0");
@@ -678,7 +679,7 @@ mod tests {
     #[test]
     fn test_get_setting_by_key() {
         let settings = TestSettings;
-        let setting = settings.get_setting("api_url");
+        let setting = settings.get_setting_metadata("api_url");
 
         assert!(setting.is_some());
         let setting = setting.unwrap();
@@ -689,7 +690,7 @@ mod tests {
     #[test]
     fn test_get_public_settings() {
         let settings = TestSettings;
-        let public = settings.get_public_settings();
+        let public = settings.public_settings();
 
         assert_eq!(public.len(), 1);
         assert_eq!(public[0].key, "api_url");
@@ -698,7 +699,7 @@ mod tests {
     #[test]
     fn test_get_secret_settings() {
         let settings = TestSettings;
-        let secret = settings.get_secret_settings();
+        let secret = settings.secret_settings();
 
         assert_eq!(secret.len(), 1);
         assert_eq!(secret[0].key, "api_key");
@@ -723,7 +724,7 @@ mod tests {
     #[test]
     fn test_get_settings_count() {
         let settings = TestSettings;
-        assert_eq!(settings.get_settings_count(), 2);
+        assert_eq!(settings.settings_count(), 2);
     }
 
     // ========================================================================
@@ -734,7 +735,7 @@ mod tests {
     #[test]
     fn test_introspection_with_nested_objects_enhanced() {
         let settings = NestedTestSettings;
-        let schema = settings.get_schema();
+        let schema = settings.schema();
 
         assert_eq!(schema.settings.len(), 1);
         let database_setting = &schema.settings[0];
@@ -754,7 +755,7 @@ mod tests {
     #[test]
     fn test_nested_object_constraints() {
         let settings = NestedTestSettings;
-        let database_setting = settings.get_setting("database").unwrap();
+        let database_setting = settings.get_setting_metadata("database").unwrap();
 
         if let SettingType::Object { fields } = &database_setting.setting_type {
             let port_field = &fields[1];
@@ -772,11 +773,11 @@ mod tests {
     #[test]
     fn test_empty_metadata_edge_case() {
         let settings = EmptyTestSettings;
-        let schema = settings.get_schema();
+        let schema = settings.schema();
 
         assert!(schema.settings.is_empty());
         assert!(schema.groups.is_empty());
-        assert_eq!(settings.get_settings_count(), 0);
+        assert_eq!(settings.settings_count(), 0);
     }
 
     /// Test queries on empty schema
@@ -784,9 +785,9 @@ mod tests {
     fn test_queries_on_empty_schema() {
         let settings = EmptyTestSettings;
 
-        assert!(settings.get_public_settings().is_empty());
-        assert!(settings.get_secret_settings().is_empty());
-        assert!(settings.get_settings_in_group("any").is_empty());
+        assert!(settings.public_settings().is_empty());
+        assert!(settings.secret_settings().is_empty());
+        assert!(settings.settings_in_group("any").is_empty());
         assert_eq!(settings.search_settings("test").len(), 0);
     }
 
@@ -796,10 +797,10 @@ mod tests {
         let settings = LargeTestSettings { count: 100 };
         let start = Instant::now();
 
-        let _schema = settings.get_schema();
-        let _public = settings.get_public_settings();
-        let _secret = settings.get_secret_settings();
-        let _group_a = settings.get_settings_in_group("group_a");
+        let _schema = settings.schema();
+        let _public = settings.public_settings();
+        let _secret = settings.secret_settings();
+        let _group_a = settings.settings_in_group("group_a");
         let _search = settings.search_settings("setting");
 
         let elapsed = start.elapsed();
@@ -813,9 +814,9 @@ mod tests {
     fn test_settings_in_group_with_multiple_groups() {
         let settings = LargeTestSettings { count: 30 };
 
-        let group_a = settings.get_settings_in_group("group_a");
-        let group_b = settings.get_settings_in_group("group_b");
-        let group_c = settings.get_settings_in_group("group_c");
+        let group_a = settings.settings_in_group("group_a");
+        let group_b = settings.settings_in_group("group_b");
+        let group_c = settings.settings_in_group("group_c");
 
         // Each group should have approximately 10 settings (30/3)
         assert!(!group_a.is_empty());
@@ -833,7 +834,7 @@ mod tests {
     #[test]
     fn test_visibility_distribution_large_schema() {
         let settings = LargeTestSettings { count: 100 };
-        let distribution = settings.get_visibility_distribution();
+        let distribution = settings.visibility_distribution();
 
         // With 100 settings and round-robin visibility assignment,
         // we should have roughly equal distribution
@@ -848,7 +849,7 @@ mod tests {
     #[test]
     fn test_type_distribution_reporting() {
         let settings = LargeTestSettings { count: 50 };
-        let distribution = settings.get_type_distribution();
+        let distribution = settings.type_distribution();
 
         // All settings in large test are String type
         assert!(distribution.contains_key("string"));
@@ -860,7 +861,7 @@ mod tests {
     #[test]
     fn test_constraint_statistics_large_schema() {
         let settings = LargeTestSettings { count: 50 };
-        let stats = settings.get_constraint_statistics();
+        let stats = settings.constraint_statistics();
 
         // With 50 settings, every 5th has Required constraint (10 total)
         let required_count = stats.get("required").unwrap_or(&0);
@@ -872,10 +873,10 @@ mod tests {
     fn test_trait_object_usage() {
         let introspector: Box<dyn SettingsIntrospection> = Box::new(TestSettings);
 
-        let schema = introspector.get_schema();
+        let schema = introspector.schema();
         assert_eq!(schema.name, "test-app");
 
-        let settings = introspector.get_public_settings();
+        let settings = introspector.public_settings();
         assert_eq!(settings.len(), 1);
     }
 
@@ -886,8 +887,8 @@ mod tests {
         let impl2 = NestedTestSettings;
 
         // Both should be able to introspect
-        let schema1 = impl1.get_schema();
-        let schema2 = impl2.get_schema();
+        let schema1 = impl1.schema();
+        let schema2 = impl2.schema();
 
         assert!(!schema1.name.is_empty());
         assert!(!schema2.name.is_empty());
@@ -907,7 +908,7 @@ mod tests {
         assert!(metadata.key.contains('_'));
 
         // Verify get_setting works with underscores
-        let api_url = settings.get_setting("api_url");
+        let api_url = settings.get_setting_metadata("api_url");
         assert!(api_url.is_some());
     }
 
@@ -925,7 +926,7 @@ mod tests {
     #[test]
     fn test_get_advanced_settings() {
         let settings = LargeTestSettings { count: 40 };
-        let advanced = settings.get_advanced_settings();
+        let advanced = settings.advanced_settings();
 
         // With 40 settings and 4-way visibility split, expect ~10 advanced
         assert!(!advanced.is_empty());
@@ -938,7 +939,7 @@ mod tests {
     #[test]
     fn test_get_hidden_settings() {
         let settings = LargeTestSettings { count: 40 };
-        let hidden = settings.get_hidden_settings();
+        let hidden = settings.hidden_settings();
 
         // With 40 settings and 4-way visibility split, expect ~10 hidden
         assert!(!hidden.is_empty());
@@ -951,7 +952,7 @@ mod tests {
     #[test]
     fn test_get_settings_with_defaults() {
         let settings = LargeTestSettings { count: 20 };
-        let with_defaults = settings.get_settings_with_defaults();
+        let with_defaults = settings.settings_with_defaults();
 
         // Every other setting has a default
         assert!(!with_defaults.is_empty());
@@ -964,7 +965,7 @@ mod tests {
     #[test]
     fn test_get_settings_with_specific_constraint() {
         let settings = LargeTestSettings { count: 50 };
-        let required = settings.get_settings_with_constraint(&Constraint::Required);
+        let required = settings.settings_with_constraint(&Constraint::Required);
 
         // Every 5th setting has Required constraint
         assert!(!required.is_empty());

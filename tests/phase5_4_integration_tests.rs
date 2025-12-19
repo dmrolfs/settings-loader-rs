@@ -42,7 +42,7 @@ mod phase5_4_integration_tests {
     struct TurtleSettings;
 
     impl SettingsIntrospection for TurtleSettings {
-        fn get_schema(&self) -> ConfigSchema {
+        fn schema(&self) -> ConfigSchema {
             ConfigSchema {
                 name: "turtle-app".to_string(),
                 version: "1.0.0".to_string(),
@@ -100,7 +100,7 @@ mod phase5_4_integration_tests {
     struct DatabaseSettings;
 
     impl SettingsIntrospection for DatabaseSettings {
-        fn get_schema(&self) -> ConfigSchema {
+        fn schema(&self) -> ConfigSchema {
             ConfigSchema {
                 name: "database-config".to_string(),
                 version: "1.0.0".to_string(),
@@ -178,7 +178,7 @@ mod phase5_4_integration_tests {
     struct ApiServerSettings;
 
     impl SettingsIntrospection for ApiServerSettings {
-        fn get_schema(&self) -> ConfigSchema {
+        fn schema(&self) -> ConfigSchema {
             ConfigSchema {
                 name: "api-server".to_string(),
                 version: "1.0.0".to_string(),
@@ -276,7 +276,7 @@ mod phase5_4_integration_tests {
     #[test]
     fn test_manual_introspection_implementation() {
         let settings = TurtleSettings;
-        let schema = settings.get_schema();
+        let schema = settings.schema();
 
         assert_eq!(schema.name, "turtle-app");
         assert_eq!(schema.version, "1.0.0");
@@ -284,7 +284,7 @@ mod phase5_4_integration_tests {
         assert_eq!(schema.groups.len(), 2);
 
         // Verify we can retrieve specific settings
-        let log_level = settings.get_setting("log_level");
+        let log_level = settings.get_setting_metadata("log_level");
         assert!(log_level.is_some());
         assert_eq!(log_level.unwrap().label, "Log Level");
     }
@@ -302,7 +302,7 @@ mod phase5_4_integration_tests {
 
         // Layer 1: Get defaults from metadata
         let defaults: HashMap<String, serde_json::Value> = settings
-            .get_settings_with_defaults()
+            .settings_with_defaults()
             .into_iter()
             .filter_map(|s| s.default.map(|d| (s.key, d)))
             .collect();
@@ -313,7 +313,7 @@ mod phase5_4_integration_tests {
 
         // Layer 2: Get required fields from constraints
         let required_settings: Vec<_> = settings
-            .get_settings_with_constraint(&Constraint::Required)
+            .settings_with_constraint(&Constraint::Required)
             .into_iter()
             .map(|s| s.key)
             .collect();
@@ -368,7 +368,7 @@ mod phase5_4_integration_tests {
     #[test]
     fn test_generate_tui_form_from_metadata() {
         let settings = DatabaseSettings;
-        let schema = settings.get_schema();
+        let schema = settings.schema();
 
         // Collect form fields by group
         let mut form_fields: HashMap<String, Vec<String>> = HashMap::new();
@@ -378,7 +378,7 @@ mod phase5_4_integration_tests {
                 .iter()
                 .filter_map(|key| {
                     settings
-                        .get_setting(key)
+                        .get_setting_metadata(key)
                         .map(|s| format!("{}: {}", s.label, s.description))
                 })
                 .collect();
@@ -391,7 +391,7 @@ mod phase5_4_integration_tests {
         assert_eq!(db_fields.len(), 4); // All 4 database settings
 
         // Verify field information for input rendering
-        for setting in &settings.get_schema().settings {
+        for setting in &settings.schema().settings {
             match &setting.setting_type {
                 SettingType::Integer { min, max } => {
                     // TUI could render as numeric input with bounds
@@ -415,7 +415,7 @@ mod phase5_4_integration_tests {
     #[test]
     fn test_generate_cli_help_from_schema() {
         let settings = ApiServerSettings;
-        let schema = settings.get_schema();
+        let schema = settings.schema();
 
         // Generate help text for each setting
         let mut help_text = String::new();
@@ -427,7 +427,7 @@ mod phase5_4_integration_tests {
             help_text.push_str(&format!("{}\n\n", group.description));
 
             for key in &group.settings {
-                if let Some(setting) = settings.get_setting(key) {
+                if let Some(setting) = settings.get_setting_metadata(key) {
                     help_text.push_str(&format!("  {}:\n", setting.label));
                     help_text.push_str(&format!("    {}\n", setting.description));
 
@@ -462,7 +462,7 @@ mod phase5_4_integration_tests {
         let settings = ApiServerSettings;
 
         // Get public settings for display in UI
-        let public_settings = settings.get_public_settings();
+        let public_settings = settings.public_settings();
         assert_eq!(public_settings.len(), 2); // api_url, api_timeout_secs
 
         // Verify no secrets in public settings
@@ -471,7 +471,7 @@ mod phase5_4_integration_tests {
         }
 
         // Get secret settings (for separate, protected display)
-        let secret_settings = settings.get_secret_settings();
+        let secret_settings = settings.secret_settings();
         assert_eq!(secret_settings.len(), 1); // api_key
 
         for setting in &secret_settings {
@@ -479,12 +479,12 @@ mod phase5_4_integration_tests {
         }
 
         // Get advanced settings
-        let advanced_settings = settings.get_advanced_settings();
+        let advanced_settings = settings.advanced_settings();
         assert_eq!(advanced_settings.len(), 2); // enable_caching, cache_ttl_seconds
 
         // Simulate rendering UI form: include public + advanced, skip secrets
         let renderable_settings: Vec<_> = settings
-            .get_schema()
+            .schema()
             .settings
             .into_iter()
             .filter(|s| s.visibility != Visibility::Secret && s.visibility != Visibility::Hidden)
@@ -504,14 +504,14 @@ mod phase5_4_integration_tests {
         let settings = ApiServerSettings;
 
         // Organize settings by group for display
-        let groups = settings.get_groups();
+        let groups = settings.groups();
         assert_eq!(groups.len(), 2);
 
         // For each group, get its settings
         let mut grouped_display: HashMap<String, Vec<String>> = HashMap::new();
 
         for group in groups {
-            let group_settings = settings.get_settings_in_group(&group.name);
+            let group_settings = settings.settings_in_group(&group.name);
             let labels: Vec<String> = group_settings.iter().map(|s| s.label.clone()).collect();
             grouped_display.insert(group.name, labels);
         }
@@ -578,12 +578,12 @@ mod phase5_4_integration_tests {
         let settings = ApiServerSettings;
 
         // User scope: all public settings visible
-        let user_visible = settings.get_public_settings();
+        let user_visible = settings.public_settings();
         assert!(user_visible.iter().all(|s| s.visibility == Visibility::Public));
 
         // System scope: all public + advanced settings
         let system_visible: Vec<_> = settings
-            .get_schema()
+            .schema()
             .settings
             .into_iter()
             .filter(|s| s.visibility != Visibility::Secret && s.visibility != Visibility::Hidden)
@@ -592,11 +592,11 @@ mod phase5_4_integration_tests {
         assert!(system_visible.len() > user_visible.len());
 
         // Admin scope: all settings including secrets
-        let admin_visible = settings.get_schema().settings;
+        let admin_visible = settings.schema().settings;
         assert_eq!(admin_visible.len(), 5);
 
         // Statistics show scope-dependent visibility
-        let user_stats = settings.get_visibility_distribution();
+        let user_stats = settings.visibility_distribution();
         assert!(user_stats.contains_key("public"));
         assert!(user_stats.contains_key("advanced"));
         assert!(user_stats.contains_key("secret"));
@@ -616,7 +616,7 @@ mod phase5_4_integration_tests {
         // Settings that implement introspection work fully
         let introspectable_settings: Box<dyn SettingsIntrospection> =
             Box::new(TurtleSettings);
-        let schema = introspectable_settings.get_schema();
+        let schema = introspectable_settings.schema();
         assert!(!schema.settings.is_empty());
 
         // Multiple different implementations can coexist
@@ -624,10 +624,10 @@ mod phase5_4_integration_tests {
         let settings2: Box<dyn SettingsIntrospection> = Box::new(ApiServerSettings);
 
         // Both work independently
-        assert_ne!(settings1.get_schema().name, settings2.get_schema().name);
+        assert_ne!(settings1.schema().name, settings2.schema().name);
         assert_ne!(
-            settings1.get_settings_count(),
-            settings2.get_settings_count()
+            settings1.settings_count(),
+            settings2.settings_count()
         );
     }
 
@@ -643,7 +643,7 @@ mod phase5_4_integration_tests {
 
         // Step 1: User loads default configuration from metadata
         let defaults: HashMap<String, serde_json::Value> = settings
-            .get_settings_with_defaults()
+            .settings_with_defaults()
             .into_iter()
             .filter_map(|s| s.default.map(|d| (s.key, d)))
             .collect();
@@ -739,11 +739,11 @@ mod phase5_4_integration_tests {
         assert!(!connection_results.is_empty());
 
         // Count statistics
-        let total = settings.get_settings_count();
+        let total = settings.settings_count();
         assert_eq!(total, 4);
 
         // Type distribution
-        let type_dist = settings.get_type_distribution();
+        let type_dist = settings.type_distribution();
         assert!(type_dist.contains_key("string"));
         assert!(type_dist.contains_key("integer"));
         assert!(type_dist.contains_key("secret"));
@@ -761,7 +761,7 @@ mod phase5_4_integration_tests {
 
         // Get settings with specific constraints
         let required_settings =
-            settings.get_settings_with_constraint(&Constraint::Required);
+            settings.settings_with_constraint(&Constraint::Required);
         assert_eq!(required_settings.len(), 2); // db_host, db_password
 
         // Get settings with range constraints
@@ -770,11 +770,11 @@ mod phase5_4_integration_tests {
             max: 65535.0,
         };
         let range_settings =
-            settings.get_settings_with_constraint(&port_constraint);
+            settings.settings_with_constraint(&port_constraint);
         assert!(!range_settings.is_empty());
 
         // Constraint statistics
-        let stats = settings.get_constraint_statistics();
+        let stats = settings.constraint_statistics();
         assert!(stats.contains_key("required"));
         assert!(stats.contains_key("range"));
     }
