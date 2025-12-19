@@ -1022,7 +1022,7 @@ mod tests {
         assert!(result.is_ok());
         let validation = result.unwrap();
         assert!(!validation.is_valid());
-        assert!(validation.errors().len() >= 1);
+        assert!(!validation.errors().is_empty());
     }
 
     /// Test validate_setting_value with proper secret value

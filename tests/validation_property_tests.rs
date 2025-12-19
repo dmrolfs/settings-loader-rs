@@ -1,13 +1,14 @@
-//! Phase 5.3: Property-Based Tests for Validation System (sl-iii)
+//! Constraint Validation Property Tests
 //!
 //! Property-based tests using proptest for comprehensive edge case coverage.
-//! These tests verify validation robustness, boundary handling, and performance.
+//! These tests verify validation robustness, boundary handling, and performance
+//! across all constraint types (Pattern, Range, Length, OneOf, Required).
 
 #![cfg(feature = "metadata")]
 
 #[cfg(test)]
 #[cfg(feature = "metadata")]
-mod phase5_3_property_tests {
+mod validation_property_tests {
     #![allow(unused_imports)]
     use proptest::prelude::*;
     use serde_json::json;
@@ -309,7 +310,7 @@ mod phase5_3_property_tests {
 
         #[test]
         fn prop_oneof_error_shows_key(allowed_vals in prop::collection::vec("[a-z]+", 1..5)) {
-            let allowed = allowed_vals.iter().map(|s| s.clone()).collect();
+            let allowed = allowed_vals.to_vec();
             let constraint = Constraint::OneOf(allowed);
             let result = constraint.validate("test_key", &json!("invalid_xyz"));
 
@@ -334,7 +335,7 @@ mod phase5_3_property_tests {
         }
 
         let elapsed = start.elapsed();
-        let millis = elapsed.as_millis() as u128;
+        let millis = elapsed.as_millis();
         // 1000 validations should complete in under 1000ms (avg ~1ms per)
         assert!(
             millis < 1000,
@@ -354,7 +355,7 @@ mod phase5_3_property_tests {
         }
 
         let elapsed = start.elapsed();
-        let millis = elapsed.as_millis() as u128;
+        let millis = elapsed.as_millis();
         assert!(millis < 1000, "Range validation too slow: {:?}ms for 1000 ops", millis);
     }
 
@@ -368,13 +369,13 @@ mod phase5_3_property_tests {
         }
 
         let elapsed = start.elapsed();
-        let millis = elapsed.as_millis() as u128;
+        let millis = elapsed.as_millis();
         assert!(millis < 1000, "Length validation too slow: {:?}ms for 1000 ops", millis);
     }
 
     #[test]
     fn prop_validation_performance_oneof() {
-        let allowed = vec!["red", "green", "blue", "yellow", "purple"]
+        let allowed = ["red", "green", "blue", "yellow", "purple"]
             .iter()
             .map(|s| s.to_string())
             .collect();
@@ -387,7 +388,7 @@ mod phase5_3_property_tests {
         }
 
         let elapsed = start.elapsed();
-        let millis = elapsed.as_millis() as u128;
+        let millis = elapsed.as_millis();
         assert!(millis < 1000, "OneOf validation too slow: {:?}ms for 1000 ops", millis);
     }
 
@@ -490,7 +491,7 @@ mod phase5_3_property_tests {
     }
 
     // ============================================================================
-    // CONSTRAINT HINT MESSAGE TESTS (sl-4ri)
+    // CONSTRAINT HINT MESSAGE TESTS
     // ============================================================================
 
     #[test]

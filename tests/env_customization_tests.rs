@@ -1,12 +1,10 @@
-//! Comprehensive test suite for Phase 2: Environment Variable Customization
+//! Environment Variable Customization Test Suite
 //!
 //! Tests validate:
 //! - Default environment variable conventions (prefix "APP", separator "__")
 //! - Custom environment variable naming conventions
 //! - Integration with LayerBuilder
-//! - Backward compatibility with Phase 1 layering
-//!
-//! TDD RED PHASE - Tests currently fail until implementation is complete.
+//! - Backward compatibility with layering
 
 use serde::{Deserialize, Serialize};
 use serial_test::serial;
