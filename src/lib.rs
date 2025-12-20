@@ -85,7 +85,9 @@ pub use provenance::{SourceMap, SourceMetadata, SourceType};
 #[cfg(feature = "editor")]
 pub mod editor;
 #[cfg(feature = "editor")]
-pub use editor::{ConfigFormat, Editor, EditorError, LayerEditor, SettingsEditor, SettingsLoaderEditor};
+pub use crate::editor::{
+    ConfigEditor, ConfigFormat, Editor, EditorError, LayerEditor, SettingsEditor, SettingsLoaderEditor,
+};
 
 #[cfg(feature = "metadata")]
 pub mod metadata;

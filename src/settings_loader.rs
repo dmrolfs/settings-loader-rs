@@ -127,6 +127,33 @@ pub trait SettingsLoader: Debug + Sized {
         Self::load_implicit(options)
     }
 
+    /// Loads application settings and returns a `ConfigEditor` for modifying them.
+    ///
+    /// This method uses the same provenance tracking as the regular load process
+    /// to initialize an editor that knows where each setting came from.
+    #[cfg(feature = "editor")]
+    #[tracing::instrument(level = "info")]
+    fn load_with_editor(options: &Self::Options) -> Result<(Self, crate::editor::ConfigEditor), SettingsError>
+    where
+        Self: DeserializeOwned,
+    {
+        let initial_builder = crate::layer::LayerBuilder::new();
+        let builder = options.build_layers(initial_builder);
+
+        let (config_builder, source_map) = builder.build_with_provenance()?;
+        let config = config_builder.build()?;
+        let settings = config.try_deserialize()?;
+
+        let mut editor = crate::editor::ConfigEditor::new(source_map);
+
+        // If a config path is explicitly provided, it's a good candidate for default target
+        if let Some(path) = options.config_path() {
+            editor.set_default_target(path);
+        }
+
+        Ok((settings, editor))
+    }
+
     /// Loads application settings by composing multiple configuration sources.
     ///
     /// This function orchestrates the loading process, combining various sources

@@ -50,6 +50,7 @@ use self::toml::TomlLayerEditor;
 use self::yaml::YamlLayerEditor;
 use serde::{de::DeserializeOwned, Serialize};
 
+pub mod config_editor;
 pub mod error;
 pub mod format;
 pub mod json;
@@ -57,6 +58,8 @@ pub mod layer_editor;
 pub mod settings_editor;
 pub mod toml;
 pub mod yaml;
+
+pub use self::config_editor::ConfigEditor;
 
 /// An enum that represents a concrete `LayerEditor` for a specific format.
 /// This allows for a single, unified interface when working with different

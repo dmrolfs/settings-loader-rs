@@ -9,11 +9,15 @@
 //! - Real-world multi-scope scenarios
 
 use serde::{Deserialize, Serialize};
-use std::fs;
-use tempfile::TempDir;
 
 #[cfg(feature = "multi-scope")]
+use serial_test::serial;
+#[cfg(feature = "multi-scope")]
 use settings_loader::MultiScopeConfig;
+#[cfg(feature = "multi-scope")]
+use std::fs;
+#[cfg(feature = "multi-scope")]
+use tempfile::TempDir;
 
 // ============================================================================
 // Test Configuration Types
@@ -198,6 +202,7 @@ fn test_resolve_path_user_global_scope() {
 
 /// Test that ProjectLocal scope searches current directory for config files
 #[test]
+#[serial]
 #[cfg(feature = "multi-scope")]
 fn test_resolve_path_project_local_scope() {
     use settings_loader::ConfigScope;
@@ -434,6 +439,7 @@ fn test_find_config_yaml_when_no_toml() {
 
 /// Test that find_config_in respects custom config file basenames
 #[test]
+#[serial]
 #[cfg(feature = "multi-scope")]
 fn test_find_config_with_custom_basename() {
     use settings_loader::MultiScopeConfig;
@@ -470,6 +476,7 @@ fn test_find_config_with_custom_basename() {
 
 /// Test that MultiScopeConfig trait is accessible and implementable
 #[test]
+#[serial]
 #[cfg(feature = "multi-scope")]
 fn test_multi_scope_config_trait() {
     use settings_loader::MultiScopeConfig;
@@ -588,6 +595,7 @@ fn test_multi_scope_find_config_in_method() {
 
 /// Test real-world Turtle configuration with all 6 scopes
 #[test]
+#[serial]
 #[cfg(feature = "multi-scope")]
 fn test_turtle_scope_resolution() {
     use settings_loader::{ConfigScope, MultiScopeConfig};
@@ -722,6 +730,7 @@ fn test_platform_specific_paths_windows() {
 
 /// Test that multi-scope resolution works with LayerBuilder
 #[test]
+#[serial]
 #[cfg(feature = "multi-scope")]
 fn test_multi_scope_with_layer_builder() {
     use settings_loader::{ConfigScope, LayerBuilder};
@@ -836,6 +845,7 @@ fn test_multi_scope_config_real_implementation() {
 
 /// Test LayerBuilder.with_scopes() integration
 #[test]
+#[serial]
 #[cfg(feature = "multi-scope")]
 fn test_layer_builder_with_scopes_integration() {
     use settings_loader::{ConfigScope, LayerBuilder};
@@ -865,6 +875,7 @@ fn test_layer_builder_with_scopes_integration() {
 
 /// Test with_scopes() with multiple scopes
 #[test]
+#[serial]
 #[cfg(feature = "multi-scope")]
 fn test_layer_builder_with_scopes_multiple() {
     use settings_loader::{LayerBuilder, MultiScopeConfig};

@@ -1,18 +1,17 @@
 //! Configuration Editor Test Suite
 
-use std::fs;
-use std::path::PathBuf;
-use tempfile::TempDir;
-
 #[cfg(feature = "editor")]
 mod editor_tests {
-    use super::*;
+    use std::fs;
+    use std::path::PathBuf;
+    use tempfile::TempDir;
+
     use settings_loader::editor::json::JsonLayerEditor;
     use settings_loader::editor::toml::TomlLayerEditor;
     use settings_loader::editor::yaml::YamlLayerEditor;
-    use settings_loader::editor::{ConfigFormat, Editor, EditorError, SettingsLoaderEditor};
-    use settings_loader::LayerEditor;
-    use settings_loader::SettingsEditor;
+    use settings_loader::editor::{
+        ConfigFormat, Editor, EditorError, LayerEditor, SettingsEditor, SettingsLoaderEditor,
+    };
     use trim_margin::MarginTrimmable;
 
     // ========================================================================
@@ -706,6 +705,75 @@ enabled = true
         // Verify it can be debugged
         let debug_msg = format!("{:?}", editor_error);
         assert!(!debug_msg.is_empty());
+    }
+
+    // ========================================================================
+    // Test 29: ConfigEditor Multi-Layer Orchestration
+    // ========================================================================
+
+    #[test]
+    fn test_config_editor_multi_layer_orchestration() {
+        use serde::Deserialize;
+        use settings_loader::{ConfigEditor, LayerBuilder, SettingsLoader};
+
+        let temp_dir = TempDir::new().unwrap();
+        let user_path = temp_dir.path().join("user.toml");
+        let project_path = temp_dir.path().join("project.json");
+
+        fs::write(&user_path, "theme = \"dark\"\nfont_size = 12").unwrap();
+        fs::write(&project_path, r#"{ "project_name": "Test", "font_size": 14 }"#).unwrap();
+
+        #[derive(Debug, Deserialize)]
+        struct MySettings {
+            theme: String,
+            font_size: u8,
+            project_name: String,
+        }
+
+        impl SettingsLoader for MySettings {
+            type Options = settings_loader::NoOptions;
+        }
+
+        // Setup builder with multiple layers
+        let initial_builder = LayerBuilder::new();
+        let builder = initial_builder
+            .with_path(user_path.clone())
+            .with_path(project_path.clone());
+
+        let (config_builder, source_map) = builder.build_with_provenance().unwrap();
+        let config = config_builder.build().unwrap();
+        let settings: MySettings = config.try_deserialize().unwrap();
+
+        // Verify initial load results
+        assert_eq!(settings.theme, "dark");
+        assert_eq!(settings.project_name, "Test");
+        assert_eq!(settings.font_size, 14);
+
+        let mut config_editor = ConfigEditor::new(source_map);
+
+        // Verify we can get values from different files
+        let theme: String = config_editor.get("theme").unwrap().unwrap();
+        assert_eq!(theme, "dark"); // From user.toml
+
+        let project_name: String = config_editor.get("project_name").unwrap().unwrap();
+        assert_eq!(project_name, "Test"); // From project.json
+
+        let font_size: u8 = config_editor.get("font_size").unwrap().unwrap();
+        assert_eq!(font_size, 14); // From project.json (overrides user.toml)
+
+        // Modify values
+        config_editor.set("theme", "light").unwrap(); // Should go to user.toml
+        config_editor.set("project_name", "Updated Project").unwrap(); // Should go to project.json
+
+        // Save all
+        config_editor.save().unwrap();
+
+        // Verify files were updated correctly
+        let user_content = fs::read_to_string(&user_path).unwrap();
+        assert!(user_content.contains("theme = \"light\""));
+
+        let project_content = fs::read_to_string(&project_path).unwrap();
+        assert!(project_content.contains("\"Updated Project\""));
     }
 }
 

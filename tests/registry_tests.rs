@@ -1,3 +1,4 @@
+#![cfg(feature = "metadata")]
 use serde_json::json;
 use settings_loader::metadata::{Constraint, SettingMetadata, SettingType, Visibility};
 use settings_loader::{global_schema, init_global_registry, register_setting, SettingsRegistry};
