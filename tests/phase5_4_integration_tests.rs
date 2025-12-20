@@ -29,9 +29,7 @@
 mod phase5_4_integration_tests {
     use serde_json::json;
     use settings_loader::introspection::SettingsIntrospection;
-    use settings_loader::metadata::{
-        ConfigSchema, Constraint, SettingGroup, SettingMetadata, SettingType, Visibility,
-    };
+    use settings_loader::metadata::{ConfigSchema, Constraint, SettingGroup, SettingMetadata, SettingType, Visibility};
     use std::collections::HashMap;
 
     // ========================================================================
@@ -68,10 +66,7 @@ mod phase5_4_integration_tests {
                         key: "max_retries".to_string(),
                         label: "Maximum Retries".to_string(),
                         description: "Maximum number of retry attempts".to_string(),
-                        setting_type: SettingType::Integer {
-                            min: Some(1),
-                            max: Some(10),
-                        },
+                        setting_type: SettingType::Integer { min: Some(1), max: Some(10) },
                         default: Some(json!(3)),
                         constraints: vec![Constraint::Required],
                         visibility: Visibility::Public,
@@ -123,15 +118,9 @@ mod phase5_4_integration_tests {
                         key: "db_port".to_string(),
                         label: "Database Port".to_string(),
                         description: "Database server port number".to_string(),
-                        setting_type: SettingType::Integer {
-                            min: Some(1),
-                            max: Some(65535),
-                        },
+                        setting_type: SettingType::Integer { min: Some(1), max: Some(65535) },
                         default: Some(json!(5432)),
-                        constraints: vec![Constraint::Range {
-                            min: 1.0,
-                            max: 65535.0,
-                        }],
+                        constraints: vec![Constraint::Range { min: 1.0, max: 65535.0 }],
                         visibility: Visibility::Public,
                         group: Some("database".to_string()),
                     },
@@ -149,10 +138,7 @@ mod phase5_4_integration_tests {
                         key: "max_connections".to_string(),
                         label: "Maximum Connections".to_string(),
                         description: "Connection pool maximum size".to_string(),
-                        setting_type: SettingType::Integer {
-                            min: Some(1),
-                            max: Some(1000),
-                        },
+                        setting_type: SettingType::Integer { min: Some(1), max: Some(1000) },
                         default: Some(json!(10)),
                         constraints: vec![],
                         visibility: Visibility::Public,
@@ -209,10 +195,7 @@ mod phase5_4_integration_tests {
                         key: "api_timeout_secs".to_string(),
                         label: "API Timeout".to_string(),
                         description: "API request timeout in seconds".to_string(),
-                        setting_type: SettingType::Integer {
-                            min: Some(1),
-                            max: Some(300),
-                        },
+                        setting_type: SettingType::Integer { min: Some(1), max: Some(300) },
                         default: Some(json!(30)),
                         constraints: vec![],
                         visibility: Visibility::Public,
@@ -232,10 +215,7 @@ mod phase5_4_integration_tests {
                         key: "cache_ttl_seconds".to_string(),
                         label: "Cache TTL".to_string(),
                         description: "Cache time-to-live in seconds".to_string(),
-                        setting_type: SettingType::Integer {
-                            min: Some(1),
-                            max: Some(3600),
-                        },
+                        setting_type: SettingType::Integer { min: Some(1), max: Some(3600) },
                         default: Some(json!(300)),
                         constraints: vec![],
                         visibility: Visibility::Advanced,
@@ -257,10 +237,7 @@ mod phase5_4_integration_tests {
                         name: "cache".to_string(),
                         label: "Caching Configuration".to_string(),
                         description: "Response caching behavior".to_string(),
-                        settings: vec![
-                            "enable_caching".to_string(),
-                            "cache_ttl_seconds".to_string(),
-                        ],
+                        settings: vec!["enable_caching".to_string(), "cache_ttl_seconds".to_string()],
                     },
                 ],
             }
@@ -396,12 +373,12 @@ mod phase5_4_integration_tests {
                 SettingType::Integer { min, max } => {
                     // TUI could render as numeric input with bounds
                     assert!(min.is_some() || max.is_some());
-                }
+                },
                 SettingType::Secret => {
                     // TUI could render as password input (masked)
                     assert_eq!(setting.visibility, Visibility::Secret);
-                }
-                _ => {}
+                },
+                _ => {},
             }
         }
     }
@@ -614,8 +591,7 @@ mod phase5_4_integration_tests {
         // In real application, optional trait implementation doesn't break anything
 
         // Settings that implement introspection work fully
-        let introspectable_settings: Box<dyn SettingsIntrospection> =
-            Box::new(TurtleSettings);
+        let introspectable_settings: Box<dyn SettingsIntrospection> = Box::new(TurtleSettings);
         let schema = introspectable_settings.schema();
         assert!(!schema.settings.is_empty());
 
@@ -625,10 +601,7 @@ mod phase5_4_integration_tests {
 
         // Both work independently
         assert_ne!(settings1.schema().name, settings2.schema().name);
-        assert_ne!(
-            settings1.settings_count(),
-            settings2.settings_count()
-        );
+        assert_ne!(settings1.settings_count(), settings2.settings_count());
     }
 
     // ========================================================================
@@ -734,8 +707,7 @@ mod phase5_4_integration_tests {
         assert!(db_results.iter().any(|s| s.key == "db_port"));
 
         // Search by description
-        let connection_results =
-            settings.search_settings_by_description("connection");
+        let connection_results = settings.search_settings_by_description("connection");
         assert!(!connection_results.is_empty());
 
         // Count statistics
@@ -760,17 +732,12 @@ mod phase5_4_integration_tests {
         let settings = DatabaseSettings;
 
         // Get settings with specific constraints
-        let required_settings =
-            settings.settings_with_constraint(&Constraint::Required);
+        let required_settings = settings.settings_with_constraint(&Constraint::Required);
         assert_eq!(required_settings.len(), 2); // db_host, db_password
 
         // Get settings with range constraints
-        let port_constraint = Constraint::Range {
-            min: 1.0,
-            max: 65535.0,
-        };
-        let range_settings =
-            settings.settings_with_constraint(&port_constraint);
+        let port_constraint = Constraint::Range { min: 1.0, max: 65535.0 };
+        let range_settings = settings.settings_with_constraint(&port_constraint);
         assert!(!range_settings.is_empty());
 
         // Constraint statistics

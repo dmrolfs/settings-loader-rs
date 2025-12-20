@@ -96,5 +96,11 @@ pub mod introspection;
 #[cfg(feature = "metadata")]
 pub mod validation;
 
+#[cfg(feature = "metadata")]
+pub mod registry;
+
+#[cfg(feature = "metadata")]
+pub use registry::{global_schema, init_global_registry, register_setting, SettingsRegistry};
+
 #[cfg(test)]
 mod tracing;
