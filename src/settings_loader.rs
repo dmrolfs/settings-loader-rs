@@ -8,6 +8,8 @@ use serde::de::DeserializeOwned;
 
 use crate::environment::Environment;
 use crate::error::SettingsError;
+#[cfg(feature = "metadata")]
+use crate::introspection::SettingsIntrospection;
 use crate::loading_options::LoadingOptions;
 
 type ConfigFile = config::File<config::FileSourceFile, config::FileFormat>;
@@ -394,6 +396,34 @@ pub trait SettingsLoader: Debug + Sized {
             config::Environment::with_prefix(Self::environment_prefix()).separator(Self::environment_path_separator());
         tracing::info!("loading environment variables with prefix: {:?}", config_env);
         config.add_source(config_env)
+    }
+
+    // ========================================================================
+    // SCHEMA & DOCUMENTATION EXPORT
+    // ========================================================================
+
+    /// Export the application's configuration schema as JSON Schema.
+    ///
+    /// This uses the metadata registered in the global registry.
+    #[cfg(feature = "metadata")]
+    fn export_json_schema(path: &Path) -> Result<(), SettingsError> {
+        crate::registry::global_schema().export_json_schema(path)
+    }
+
+    /// Export the application's configuration documentation as HTML.
+    ///
+    /// This uses the metadata registered in the global registry.
+    #[cfg(feature = "metadata")]
+    fn export_docs(path: &Path) -> Result<(), SettingsError> {
+        crate::registry::global_schema().export_docs(path)
+    }
+
+    /// Export an example configuration file with defaults and descriptions.
+    ///
+    /// This uses the metadata registered in the global registry.
+    #[cfg(feature = "metadata")]
+    fn export_example_config(path: &Path) -> Result<(), SettingsError> {
+        crate::registry::global_schema().export_example_config(path)
     }
 }
 

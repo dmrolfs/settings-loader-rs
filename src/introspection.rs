@@ -14,9 +14,11 @@
 //! - **Search & Query**: Find settings by pattern or criteria
 //! - **Statistics**: Analyze configuration distribution and metadata
 
+use crate::error::SettingsError;
 use crate::metadata::{ConfigSchema, Constraint, SettingGroup, SettingMetadata, SettingType, Visibility};
 use crate::validation::{ValidationError, ValidationResult};
 use std::collections::HashMap;
+use std::path::Path;
 
 /// Runtime introspection API for configuration schemas
 ///
@@ -415,6 +417,42 @@ pub trait SettingsIntrospection {
             }
         }
         stats
+    }
+
+    // ========================================================================
+    // EXPORT & DOCUMENTATION
+    // ========================================================================
+
+    /// Export the configuration schema as a JSON Schema file
+    ///
+    /// The generated file is compatible with JSON Schema Draft 7.
+    fn export_json_schema(&self, path: &Path) -> Result<(), SettingsError> {
+        let schema = self.schema().to_json_schema();
+        let content = serde_json::to_string_pretty(&schema)
+            .map_err(|e| std::io::Error::other(format!("JSON serialization error: {}", e)))?;
+        std::fs::write(path, content)?;
+        Ok(())
+    }
+
+    /// Export human-readable documentation as an HTML file
+    fn export_docs(&self, path: &Path) -> Result<(), SettingsError> {
+        let html = self.schema().to_html();
+        std::fs::write(path, html)?;
+        Ok(())
+    }
+
+    /// Export an example configuration file with default values and descriptions
+    fn export_example_config(&self, path: &Path) -> Result<(), SettingsError> {
+        // For now, we only support TOML as the example format
+        let toml = self.schema().to_example_toml();
+        std::fs::write(path, toml)?;
+        Ok(())
+    }
+}
+
+impl SettingsIntrospection for ConfigSchema {
+    fn schema(&self) -> ConfigSchema {
+        self.clone()
     }
 }
 
