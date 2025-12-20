@@ -70,10 +70,22 @@ use config::builder::DefaultState;
 use config::{Config, ConfigBuilder};
 use path_absolutize::Absolutize;
 
-use crate::provenance::{SourceMap, SourceMetadata, SourceType};
+use crate::provenance::{SettingSource, SourceMap, SourceMetadata};
+use crate::scope::ConfigScope;
 use crate::{Environment, SettingsError};
 use config::Source;
 
+/// Result type for layer resolution, containing metadata and dual sources.
+type LayerResult = Result<
+    (
+        SourceMetadata,
+        Box<dyn Source + Send + Sync>,
+        Box<dyn Source + Send + Sync>,
+    ),
+    SettingsError,
+>;
+
+/// A builder for constructing a layered configuration.
 type ConfigFile = config::File<config::FileSourceFile, config::FileFormat>;
 
 /// Represents a single configuration layer/source.
@@ -296,77 +308,13 @@ impl LayerBuilder {
     ///
     /// # Errors
     /// Returns SettingsError if layer validation fails (missing files, path absolutization, etc).
-    pub fn build(self) -> Result<ConfigBuilder<DefaultState>, SettingsError> {
+    pub fn build(mut self) -> Result<ConfigBuilder<DefaultState>, SettingsError> {
         let mut config = Config::builder();
 
-        for layer in self.layers {
-            config = match layer {
-                ConfigLayer::Path(path) => {
-                    let abs_path = path.absolutize()?;
-                    // Validate file exists before adding to config
-                    std::fs::metadata(&abs_path).map_err(|_e| {
-                        SettingsError::from(io::Error::new(
-                            io::ErrorKind::NotFound,
-                            format!("config file not found: {}", abs_path.display()),
-                        ))
-                    })?;
-                    config.add_source(ConfigFile::from(abs_path.as_ref()).required(true))
-                },
-                ConfigLayer::EnvVar(var_name) => {
-                    match std::env::var(&var_name) {
-                        Ok(env_path) => {
-                            let abs_path = Path::new(&env_path).absolutize()?;
-                            // Validate file exists before adding to config
-                            std::fs::metadata(&abs_path).map_err(|_e| {
-                                SettingsError::from(io::Error::new(
-                                    io::ErrorKind::NotFound,
-                                    format!("config file not found: {}", abs_path.display()),
-                                ))
-                            })?;
-                            config.add_source(ConfigFile::from(abs_path.as_ref()).required(true))
-                        },
-                        Err(std::env::VarError::NotPresent) => {
-                            // Skip gracefully - no error
-                            config
-                        },
-                        Err(e) => return Err(e.into()),
-                    }
-                },
-                ConfigLayer::EnvSearch { env: _env, dirs: _dirs } => {
-                    // TODO: Implement EnvSearch in Phase 3
-                    // For now, skip this layer
-                    config
-                },
-                ConfigLayer::ScopedPath { path, .. } => {
-                    // Same logic as Path
-                    let abs_path = path.absolutize()?;
-                    // Validate file exists before adding to config
-                    std::fs::metadata(&abs_path).map_err(|_e| {
-                        SettingsError::from(io::Error::new(
-                            io::ErrorKind::NotFound,
-                            format!("config file not found: {}", abs_path.display()),
-                        ))
-                    })?;
-                    config.add_source(ConfigFile::from(abs_path.as_ref()).required(true))
-                },
-                ConfigLayer::Secrets(path) => {
-                    let abs_path = path.absolutize()?;
-                    // Validate file exists before adding to config
-                    std::fs::metadata(&abs_path).map_err(|_e| {
-                        SettingsError::from(io::Error::new(
-                            io::ErrorKind::NotFound,
-                            format!("secrets file not found: {}", abs_path.display()),
-                        ))
-                    })?;
-                    config.add_source(ConfigFile::from(abs_path.as_ref()).required(true))
-                },
-                ConfigLayer::EnvVars { prefix, separator } => config.add_source(
-                    config::Environment::default()
-                        .prefix(&prefix)
-                        .separator(&separator)
-                        .try_parsing(true),
-                ),
-            };
+        let layers = std::mem::take(&mut self.layers);
+        for (idx, layer) in layers.into_iter().enumerate() {
+            let (_, s1, _) = self.resolve_layer_sources(&layer, idx)?;
+            config = config.add_source(vec![s1]);
         }
 
         Ok(config)
@@ -375,125 +323,139 @@ impl LayerBuilder {
     /// Build the configuration and return the source map (provenance).
     ///
     /// Identical to `build()`, but also tracks which source provided which value.
-    pub fn build_with_provenance(self) -> Result<(ConfigBuilder<DefaultState>, SourceMap), SettingsError> {
+    pub fn build_with_provenance(mut self) -> Result<(ConfigBuilder<DefaultState>, SourceMap), SettingsError> {
         let mut config = Config::builder();
         let mut source_map = SourceMap::new();
 
-        for layer in self.layers {
-            // 1. Create Metadata & Source
-            // We need TWO copies of the source: one for `config.add_source` (consumed),
-            // and one for `source.collect()` (to build the map).
-
-            let (metadata, source_for_config, source_for_map): (
-                SourceMetadata,
-                Box<dyn Source + Send + Sync>,
-                Box<dyn Source + Send + Sync>,
-            ) = match &layer {
-                ConfigLayer::Path(path) | ConfigLayer::ScopedPath { path, .. } => {
-                    let abs_path = path.absolutize()?;
-                    // Check existence
-                    std::fs::metadata(&abs_path).map_err(|_e| {
-                        SettingsError::from(io::Error::new(
-                            io::ErrorKind::NotFound,
-                            format!("config file not found: {}", abs_path.display()),
-                        ))
-                    })?;
-
-                    let scope = if let ConfigLayer::ScopedPath { scope, .. } = layer {
-                        Some(scope)
-                    } else {
-                        None
-                    };
-
-                    let meta = SourceMetadata::file(abs_path.to_path_buf(), scope);
-                    let s1 = ConfigFile::from(abs_path.as_ref()).required(true);
-                    let s2 = ConfigFile::from(abs_path.as_ref()).required(true);
-                    (meta, Box::new(s1), Box::new(s2))
-                },
-                ConfigLayer::EnvVar(var_name) => {
-                    let meta = SourceMetadata::env(var_name.clone());
-                    match std::env::var(var_name) {
-                        Ok(env_path) => {
-                            let abs_path = Path::new(&env_path).absolutize()?;
-                            std::fs::metadata(&abs_path).map_err(|_e| {
-                                SettingsError::from(io::Error::new(
-                                    io::ErrorKind::NotFound,
-                                    format!("config file not found: {}", abs_path.display()),
-                                ))
-                            })?;
-                            let s1 = ConfigFile::from(abs_path.as_ref()).required(true);
-                            let s2 = ConfigFile::from(abs_path.as_ref()).required(true);
-                            (meta, Box::new(s1), Box::new(s2))
-                        },
-                        Err(_) => {
-                            // Empty source if missing
-                            let s1 = config::File::from_str("", config::FileFormat::Json);
-                            let s2 = config::File::from_str("", config::FileFormat::Json);
-                            (meta, Box::new(s1), Box::new(s2))
-                        },
-                    }
-                },
-                ConfigLayer::EnvSearch { .. } => {
-                    // TODO: Implement EnvSearch
-                    let meta = SourceMetadata::default();
-                    // Return empty sources
-                    let s1 = config::File::from_str("", config::FileFormat::Json);
-                    let s2 = config::File::from_str("", config::FileFormat::Json);
-                    (meta, Box::new(s1), Box::new(s2))
-                },
-                ConfigLayer::Secrets(path) => {
-                    let abs_path = path.absolutize()?;
-                    std::fs::metadata(&abs_path).map_err(|_e| {
-                        SettingsError::from(io::Error::new(
-                            io::ErrorKind::NotFound,
-                            format!("secrets file not found: {}", abs_path.display()),
-                        ))
-                    })?;
-                    let meta = SourceMetadata {
-                        id: format!("secrets:{}", abs_path.display()),
-                        source_type: SourceType::Secrets,
-                        path: Some(abs_path.to_path_buf()),
-                        scope: None,
-                    };
-                    let s1 = ConfigFile::from(abs_path.as_ref()).required(true);
-                    let s2 = ConfigFile::from(abs_path.as_ref()).required(true);
-                    (meta, Box::new(s1), Box::new(s2))
-                },
-                ConfigLayer::EnvVars { prefix, separator } => {
-                    let meta = SourceMetadata {
-                        id: format!("env_vars:{}", prefix),
-                        source_type: SourceType::Environment,
-                        path: None,
-                        scope: Some(crate::scope::ConfigScope::Runtime),
-                    };
-                    let s1 = config::Environment::default()
-                        .prefix(prefix)
-                        .separator(separator)
-                        .try_parsing(true);
-                    let s2 = config::Environment::default()
-                        .prefix(prefix)
-                        .separator(separator)
-                        .try_parsing(true);
-                    (meta, Box::new(s1), Box::new(s2))
-                },
-            };
-
-            // 2. Collect for map
-            // We allow collection errors to just mean "no values" for map purposes?
-            // Or fail? Logic in build() fails on missing files, but we handled that above.
-            if let Ok(props) = source_for_map.collect() {
-                for (key, _value) in props {
-                    source_map.insert(key, metadata.clone());
-                }
-            }
-
-            // 3. Add to config
-            // Note: Box<dyn Source> doesn't implement Source directly in some versions,
-            // but Vec<Box<dyn Source>> does.
-            config = config.add_source(vec![source_for_config]);
+        let layers = std::mem::take(&mut self.layers);
+        for (idx, layer) in layers.into_iter().enumerate() {
+            let (metadata, s1, s2) = self.resolve_layer_sources(&layer, idx)?;
+            config = config.add_source(vec![s1]);
+            source_map.insert_layer(metadata, s2.collect()?);
         }
 
         Ok((config, source_map))
+    }
+
+    /// Helper to resolve a single layer into metadata and dual sources.
+    fn resolve_layer_sources(&self, layer: &ConfigLayer, idx: usize) -> LayerResult {
+        match layer {
+            ConfigLayer::Path(path) | ConfigLayer::ScopedPath { path, .. } => {
+                let scope = if let ConfigLayer::ScopedPath { scope, .. } = layer {
+                    Some(*scope)
+                } else {
+                    None
+                };
+                self.resolve_file_layer(path, scope, idx)
+            },
+            ConfigLayer::EnvVar(var_name) => self.resolve_env_var_layer(var_name, idx),
+            ConfigLayer::EnvSearch { env, dirs } => self.resolve_env_search_layer(env, dirs, idx),
+            ConfigLayer::Secrets(path) => self.resolve_secrets_layer(path, idx),
+            ConfigLayer::EnvVars { prefix, separator } => self.resolve_env_vars_layer(prefix, separator, idx),
+        }
+    }
+
+    fn resolve_file_layer(&self, path: &Path, scope: Option<ConfigScope>, idx: usize) -> LayerResult {
+        let abs_path = path.absolutize()?;
+        if !abs_path.exists() {
+            return Err(SettingsError::from(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("config file not found: {}", abs_path.display()),
+            )));
+        }
+
+        let meta = SourceMetadata::file(abs_path.to_path_buf(), scope, idx);
+        let s1 = ConfigFile::from(abs_path.as_ref()).required(true);
+        let s2 = ConfigFile::from(abs_path.as_ref()).required(true);
+        Ok((meta, Box::new(s1), Box::new(s2)))
+    }
+
+    fn resolve_env_var_layer(&self, var_name: &str, idx: usize) -> LayerResult {
+        let meta = SourceMetadata::env(var_name.to_string(), idx);
+        match std::env::var(var_name) {
+            Ok(env_path) => {
+                let abs_path = Path::new(&env_path).absolutize()?;
+                if !abs_path.exists() {
+                    return Err(SettingsError::from(io::Error::new(
+                        io::ErrorKind::NotFound,
+                        format!(
+                            "config file from env var {} not found: {}",
+                            var_name,
+                            abs_path.display()
+                        ),
+                    )));
+                }
+                let s1 = ConfigFile::from(abs_path.as_ref()).required(true);
+                let s2 = ConfigFile::from(abs_path.as_ref()).required(true);
+                Ok((meta, Box::new(s1), Box::new(s2)))
+            },
+            Err(_) => {
+                let s1 = config::File::from_str("{}", config::FileFormat::Json);
+                let s2 = config::File::from_str("{}", config::FileFormat::Json);
+                Ok((meta, Box::new(s1), Box::new(s2)))
+            },
+        }
+    }
+
+    fn resolve_env_search_layer(&self, env: &Environment, dirs: &[PathBuf], idx: usize) -> LayerResult {
+        let env_name = env.as_ref();
+        let extensions = ["toml", "yaml", "yml", "json", "ron", "hjson", "json5"];
+
+        for dir in dirs {
+            for ext in &extensions {
+                let path = dir.join(format!("{}.{}", env_name, ext));
+                if path.exists() {
+                    let abs_path = path.absolutize()?;
+                    let meta = SourceMetadata::file(abs_path.to_path_buf(), None, idx);
+                    let s1 = ConfigFile::from(abs_path.as_ref()).required(true);
+                    let s2 = ConfigFile::from(abs_path.as_ref()).required(true);
+                    return Ok((meta, Box::new(s1), Box::new(s2)));
+                }
+            }
+        }
+
+        // No file found, return empty
+        let meta = SourceMetadata {
+            source: SettingSource::Override { name: format!("env_search:{}", env) },
+            layer_index: idx,
+        };
+        let s1 = config::File::from_str("{}", config::FileFormat::Json);
+        let s2 = config::File::from_str("{}", config::FileFormat::Json);
+        Ok((meta, Box::new(s1), Box::new(s2)))
+    }
+
+    fn resolve_secrets_layer(&self, path: &Path, idx: usize) -> LayerResult {
+        let abs_path = path.absolutize()?;
+        if !abs_path.exists() {
+            return Err(SettingsError::from(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("secrets file not found: {}", abs_path.display()),
+            )));
+        }
+
+        let meta = SourceMetadata {
+            source: SettingSource::Secrets { path: abs_path.to_path_buf() },
+            layer_index: idx,
+        };
+        let s1 = ConfigFile::from(abs_path.as_ref()).required(true);
+        let s2 = ConfigFile::from(abs_path.as_ref()).required(true);
+        Ok((meta, Box::new(s1), Box::new(s2)))
+    }
+
+    fn resolve_env_vars_layer(&self, prefix: &str, separator: &str, idx: usize) -> LayerResult {
+        let meta = SourceMetadata {
+            source: SettingSource::EnvVars { prefix: prefix.to_string() },
+            layer_index: idx,
+        };
+        let s1 = config::Environment::default()
+            .prefix(prefix)
+            .separator(separator)
+            .try_parsing(true);
+        let s2 = config::Environment::default()
+            .prefix(prefix)
+            .separator(separator)
+            .try_parsing(true);
+        Ok((meta, Box::new(s1), Box::new(s2)))
     }
 }
 

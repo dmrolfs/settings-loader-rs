@@ -9,69 +9,93 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt;
 use std::path::PathBuf;
 
 use crate::scope::ConfigScope;
+pub use crate::scope::ConfigScope as SourceScope;
 
-/// Identifies the kind of source that provided a configuration value.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum SourceType {
-    /// Default values provided by the application code
+/// Identifies the specific source that provided a configuration value.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum SettingSource {
+    /// Default values provided by the application code or metadata
     Default,
     /// Configuration loaded from a file
-    File,
-    /// Configuration loaded from environment variables
-    Environment,
+    File {
+        /// Standardized absolute path to the file
+        path: PathBuf,
+        /// The configuration scope (e.g., UserGlobal, ProjectLocal)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        scope: Option<ConfigScope>,
+    },
+    /// Configuration loaded from a specific environment variable
+    EnvVar {
+        /// Name of the environment variable
+        name: String,
+    },
+    /// Configuration loaded from a set of environment variables (e.g., APP_*)
+    EnvVars {
+        /// Prefix used for the search
+        prefix: String,
+    },
     /// Configuration loaded from a secrets file
-    Secrets,
+    Secrets {
+        /// Path to the secrets file
+        path: PathBuf,
+    },
     /// Configuration provided by CLI arguments or runtime overrides
-    Override,
+    Override {
+        /// Name/identifier of the override
+        name: String,
+    },
 }
 
-/// Metadata describing the origin of a configuration value.
+impl fmt::Display for SettingSource {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Default => write!(f, "default"),
+            Self::File { path, scope } => {
+                let scope_str = scope.map(|s| format!(" ({:?})", s)).unwrap_or_default();
+                write!(f, "file:{}{}", path.display(), scope_str)
+            },
+            Self::EnvVar { name } => write!(f, "env:{}", name),
+            Self::EnvVars { prefix } => write!(f, "env_vars:{}*", prefix),
+            Self::Secrets { path } => write!(f, "secrets:{}", path.display()),
+            Self::Override { name } => write!(f, "override:{}", name),
+        }
+    }
+}
+
+/// Metadata describing the origin and precedence of a configuration value.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SourceMetadata {
-    /// Unique identifier for the source (e.g., "file:settings.toml", "env:APP_PORT")
-    pub id: String,
-    /// The type of source
-    pub source_type: SourceType,
-    /// The file path, if applicable (Standardized absolute path)
-    pub path: Option<PathBuf>,
-    /// The configuration scope, if applicable
-    pub scope: Option<ConfigScope>,
+    /// The specific source origin
+    pub source: SettingSource,
+    /// Precedence layer index (higher values mean higher precedence)
+    pub layer_index: usize,
 }
 
 impl SourceMetadata {
     /// Create metadata for a file source
-    pub fn file(path: PathBuf, scope: Option<ConfigScope>) -> Self {
-        let id = format!("file:{}", path.display());
+    pub fn file(path: PathBuf, scope: Option<ConfigScope>, layer_index: usize) -> Self {
         Self {
-            id,
-            source_type: SourceType::File,
-            path: Some(path),
-            scope,
+            source: SettingSource::File { path, scope },
+            layer_index,
         }
     }
 
     /// Create metadata for an environment variable source
-    pub fn env(var_name: String) -> Self {
+    pub fn env(name: String, layer_index: usize) -> Self {
         Self {
-            id: format!("env:{}", var_name),
-            source_type: SourceType::Environment,
-            path: None,
-            scope: Some(ConfigScope::Runtime),
+            source: SettingSource::EnvVar { name },
+            layer_index,
         }
     }
-}
 
-impl Default for SourceMetadata {
-    fn default() -> Self {
-        Self {
-            id: "<none>".to_string(),
-            source_type: SourceType::Default,
-            path: None,
-            scope: None,
-        }
+    /// Create metadata for a default source
+    pub fn default(layer_index: usize) -> Self {
+        Self { source: SettingSource::Default, layer_index }
     }
 }
 
@@ -91,9 +115,18 @@ impl SourceMap {
         Self { entries: HashMap::new() }
     }
 
-    /// Record a source for a given key
+    /// Record a source for a given key.
+    ///
+    /// If a key already exists, it is only updated if the new metadata has
+    /// a higher or equal layer index (higher precedence).
     pub fn insert(&mut self, key: String, metadata: SourceMetadata) {
-        self.entries.insert(key, metadata);
+        if let Some(existing) = self.entries.get(&key) {
+            if metadata.layer_index >= existing.layer_index {
+                self.entries.insert(key, metadata);
+            }
+        } else {
+            self.entries.insert(key, metadata);
+        }
     }
 
     /// Get the source metadata for a specific key
@@ -101,12 +134,38 @@ impl SourceMap {
         self.entries.get(key)
     }
 
-    /// Get all keys provided by a specific source type
-    pub fn keys_from(&self, source_type: SourceType) -> Vec<String> {
-        self.entries
-            .iter()
-            .filter(|(_, meta)| meta.source_type == source_type)
-            .map(|(key, _)| key.clone())
-            .collect()
+    /// Get all entries in the source map
+    pub fn entries(&self) -> &HashMap<String, SourceMetadata> {
+        &self.entries
+    }
+
+    /// Generate a structured audit report of all configuration sources.
+    /// Inserts all keys from a source into the map, only if they have higher precedence (higher layer_index).
+    pub fn insert_layer(&mut self, metadata: SourceMetadata, props: HashMap<String, config::Value>) {
+        for key in props.keys() {
+            let should_insert = match self.entries.get(key) {
+                Some(existing) => metadata.layer_index >= existing.layer_index,
+                None => true,
+            };
+
+            if should_insert {
+                self.entries.insert(key.clone(), metadata.clone());
+            }
+        }
+    }
+
+    pub fn audit_report(&self) -> String {
+        let mut report = String::from("Configuration Audit Report\n");
+        report.push_str("==========================\n\n");
+
+        let mut sorted_keys: Vec<_> = self.entries.keys().collect();
+        sorted_keys.sort();
+
+        for key in sorted_keys {
+            let meta = &self.entries[key];
+            report.push_str(&format!("{:<30} -> Layer {}: {}\n", key, meta.layer_index, meta.source));
+        }
+
+        report
     }
 }

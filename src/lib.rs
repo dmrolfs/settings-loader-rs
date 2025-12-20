@@ -80,7 +80,7 @@ pub mod provenance;
 pub mod scope;
 pub mod settings_loader;
 
-pub use provenance::{SourceMap, SourceMetadata, SourceType};
+pub use crate::provenance::{SettingSource, SourceMap, SourceMetadata};
 
 #[cfg(feature = "editor")]
 pub mod editor;

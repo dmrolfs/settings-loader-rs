@@ -127,6 +127,22 @@ pub trait SettingsLoader: Debug + Sized {
         Self::load_implicit(options)
     }
 
+    /// Loads application settings and returns a `SourceMap` containing provenance information.
+    #[tracing::instrument(level = "info")]
+    fn load_with_provenance(options: &Self::Options) -> Result<(Self, crate::provenance::SourceMap), SettingsError>
+    where
+        Self: DeserializeOwned,
+    {
+        let initial_builder = crate::layer::LayerBuilder::new();
+        let builder = options.build_layers(initial_builder);
+
+        let (config_builder, source_map) = builder.build_with_provenance()?;
+        let config = config_builder.build()?;
+        let settings = config.try_deserialize()?;
+
+        Ok((settings, source_map))
+    }
+
     /// Loads application settings and returns a `ConfigEditor` for modifying them.
     ///
     /// This method uses the same provenance tracking as the regular load process

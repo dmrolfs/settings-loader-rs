@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use super::{Editor, EditorError, LayerEditor, SettingsEditor, SettingsLoaderEditor};
-use crate::provenance::{SourceMap, SourceType};
+use crate::provenance::{SettingSource, SourceMap};
 
 /// Orchestrates multi-layer configuration editing using provenance data.
 #[derive(Debug, Default)]
@@ -58,14 +58,9 @@ impl ConfigEditor {
                 None => return Ok(None),
             };
 
-            // Only file sources can be edited currently
-            if metadata.source_type != SourceType::File {
-                return Ok(None);
-            }
-
-            match &metadata.path {
-                Some(p) => p.clone(),
-                None => return Ok(None),
+            match &metadata.source {
+                SettingSource::File { path, .. } => path.clone(),
+                _ => return Ok(None),
             }
         };
 
@@ -83,15 +78,15 @@ impl ConfigEditor {
     /// Returns `EditorError::KeyNotFound` if the key is new and no default target is set.
     pub fn set<T: Serialize>(&mut self, key: &str, value: T) -> Result<(), EditorError> {
         let path = if let Some(meta) = self.source_map.source_of(key) {
-            if meta.source_type != SourceType::File {
-                return Err(EditorError::InvalidPath(format!(
-                    "Source for key '{}' is not a file: {:?}",
-                    key, meta.source_type
-                )));
+            match &meta.source {
+                SettingSource::File { path, .. } => path.clone(),
+                other => {
+                    return Err(EditorError::InvalidPath(format!(
+                        "Source for key '{}' is not a file: {:?}",
+                        key, other
+                    )));
+                },
             }
-            meta.path
-                .clone()
-                .ok_or_else(|| EditorError::InvalidPath(format!("Source for key '{}' has no path", key)))?
         } else if let Some(target) = &self.default_target {
             target.clone()
         } else {
@@ -116,17 +111,15 @@ impl ConfigEditor {
                 .source_of(key)
                 .ok_or_else(|| EditorError::KeyNotFound(key.to_string()))?;
 
-            if metadata.source_type != SourceType::File {
-                return Err(EditorError::InvalidPath(format!(
-                    "Source for key '{}' is not a file",
-                    key
-                )));
+            match &metadata.source {
+                SettingSource::File { path, .. } => path.clone(),
+                _ => {
+                    return Err(EditorError::InvalidPath(format!(
+                        "Source for key '{}' is not a file",
+                        key
+                    )));
+                },
             }
-
-            metadata
-                .path
-                .clone()
-                .ok_or_else(|| EditorError::InvalidPath(format!("Source for key '{}' has no path", key)))?
         };
 
         let editor = self.get_or_open_editor(&path)?;

@@ -620,3 +620,41 @@ fn test_env_vars_only() {
     std::env::remove_var("MYAPP_DB_HOST");
     std::env::remove_var("MYAPP_DB_PASSWORD");
 }
+
+/// Test 27: EnvSearch layer searches directories and finds environment-specific file
+#[test]
+fn test_layer_builder_with_env_search() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let config_dir = temp_dir.path().join("config");
+    fs::create_dir_all(&config_dir).unwrap();
+
+    // Create a production.yaml file in the config directory
+    let prod_config = config_dir.join("production.yaml");
+    fs::write(&prod_config, "port: 9999\napp_name: ProdApp").unwrap();
+
+    let env = settings_loader::Environment::from("production");
+    let builder = LayerBuilder::new().with_env_search(env, vec![config_dir.clone()]);
+
+    let config_builder = builder.build().unwrap();
+    let config = config_builder.build().unwrap();
+    let result: TestConfig = config.try_deserialize().unwrap();
+
+    assert_eq!(result.port, 9999);
+    assert_eq!(result.app_name, "ProdApp");
+}
+
+/// Test 28: EnvSearch layer skips gracefully if no file found
+#[test]
+fn test_layer_builder_with_env_search_missing() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let config_dir = temp_dir.path().join("config");
+    fs::create_dir_all(&config_dir).unwrap();
+
+    let env = settings_loader::Environment::from("production");
+    let builder = LayerBuilder::new().with_env_search(env, vec![config_dir]);
+
+    // Should not error, just produce empty config
+    let config_builder = builder.build().unwrap();
+    let config = config_builder.build().unwrap();
+    assert!(config.get_string("app_name").is_err());
+}
