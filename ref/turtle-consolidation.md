@@ -10,22 +10,49 @@ During the development of `spark-turtle`'s TUI settings editor, several capabili
 
 ## Components to Consolidate
 
+## Important: Wrapping, Not Replacing
+
+The consolidation strategy wraps the config crate rather than replacing it. This preserves:
+- Serde deserialization capability
+- Multi-source composition
+- Format support (YAML, JSON, TOML, etc.)
+
+Turtle's implementations (ConfigEditor, SettingsRegistry, etc.) become first-class 
+features in settings-loader, all layered on top of config crate's proven merging logic.
+
 ### 1. ConfigEditor (Multi-Format Editing)
 
 **Source**: `spark-turtle/crates/turtle-core/src/config/editor.rs`
 
-**Current Implementation**:
-```rust
-pub struct ConfigEditor {
-    path: PathBuf,
-    backend: EditorBackend,
-}
+**Integration Point**: Becomes `LayerEditor` in settings-loader
 
-enum EditorBackend {
-    Toml(DocumentMut),  // toml_edit for comment preservation
-    Json(serde_json::Value),
-    Yaml(serde_yaml::Value),
+Instead of a standalone tool, becomes part of the layering system:
+```rust
+pub struct LayerEditor {
+    scope: ConfigScope,      // Know which scope we're editing
+    path: PathBuf,
+    backend: EditorBackend,  // toml_edit, json, yaml
 }
+```
+
+**Benefits**:
+- Works with multi-scope system
+- Integrates with source provenance (knows source origin)
+- Standardized across projects using settings-loader
+- Comment preservation built-in for TOML
+
+**Turtle API Before**:
+```rust
+let editor = ConfigEditor::load("turtle.toml")?;
+editor.set_string("llm.ollama.model", "codellama")?;
+editor.save()?;
+```
+
+**Turtle API After** (using settings-loader):
+```rust
+let mut editor = LayerEditor::for_scope(ConfigScope::ProjectLocal)?;
+editor.set("llm.ollama.model", "codellama")?;
+editor.save()?;
 ```
 
 **APIs to Extract**:
@@ -53,20 +80,49 @@ pub trait SettingsEditor: SettingsLoader {
 
 **Source**: `spark-turtle/crates/turtle-core/src/config/metadata.rs`
 
-**Current Implementation**:
+**Integration Point**: Becomes `ConfigSchema` trait in settings-loader (Phase 5)
+
 ```rust
-pub struct SettingMetadata {
-    pub key: &'static str,
-    pub description: &'static str,
-    pub default_value: &'static str,
-    pub is_relevant: fn(&TurtleConfig) -> bool,
+pub trait SettingsIntrospection {
+    fn schema(&self) -> ConfigSchema;
 }
 
-pub struct SettingsRegistry;
+pub struct ConfigSchema {
+    pub name: String,
+    pub settings: Vec<SettingMetadata>,
+    pub groups: Vec<SettingGroup>,
+}
 
-impl SettingsRegistry {
-    pub fn all() -> &'static [SettingMetadata] { ... }
-    pub fn available_for(config: &TurtleConfig) -> Vec<&'static SettingMetadata> { ... }
+pub struct SettingMetadata {
+    pub key: String,
+    pub label: String,
+    pub description: String,
+    pub setting_type: SettingType,
+    pub default: Option<serde_json::Value>,
+    pub constraints: Vec<Constraint>,
+    pub visibility: Visibility,
+}
+```
+
+**Benefits**:
+- Rich type information (Integer, Float, Enum, etc.)
+- Validation constraints
+- Visibility levels (public, secret, advanced, hidden)
+- Group organization
+- Optional proc-macro for derivation
+
+**Turtle API Before**:
+```rust
+for meta in SettingsRegistry::all() {
+    println!("{}: {}", meta.key, meta.description);
+}
+```
+
+**Turtle API After** (using settings-loader):
+```rust
+for meta in TurtleConfig::schema().settings {
+    println!("{}: {} (type: {:?})", 
+        meta.key, meta.description, meta.setting_type);
 }
 ```
 
@@ -123,56 +179,48 @@ pub struct LlmConfig {
 
 ### 3. Multi-Scope Path Resolution
 
-**Source**: `spark-turtle/crates/turtle-tui/src/settings.rs`
+**Integration Point**: Becomes `MultiScopeLoader` in settings-loader (Phase 2)
 
-**Current Implementation**:
+Automatically discovers and merges configuration from all scopes:
+
 ```rust
-fn init_editors(&mut self, project_path: Option<&Path>) {
-    // User Global
-    if let Some(proj_dirs) = ProjectDirs::from("", "turtle", "spark-turtle") {
-        let setting_path = proj_dirs.config_dir().join("settings.toml");
-        self.user_editor = ConfigEditor::load(&setting_path).ok();
-    }
+pub enum ConfigScope {
+    System,           // System defaults
+    UserGlobal,       // ~/.config/app/
+    ProjectLocal,     // ./settings.toml
+    Runtime,          // APP_* env vars
+}
+
+pub trait MultiScopeLoader: DeserializeOwned {
+    const APP_NAME: &'static str;
     
-    // Project Local
-    let path = project_path.unwrap_or(&PathBuf::from("turtle.toml"));
-    self.project_editor = ConfigEditor::load(&path).ok();
+    fn load_multi_scope() -> Result<(Self, SourceMap)> {
+        // Automatically discovers and merges from all scopes
+        // SourceMap tracks which scope each value came from
+    }
 }
 ```
 
-**Generalization for settings-loader**:
+**Benefits**:
+- Automatic scope path resolution (uses `directories` crate)
+- Single call to load all scopes
+- Source tracking (know which scope each setting came from)
+- Consistent across projects
+
+**Turtle API Before**:
 ```rust
-pub trait ScopedConfig: SettingsLoader {
-    /// Application name for directory resolution
-    const APP_NAME: &'static str;
-    const ORG_NAME: &'static str = "";
-    
-    /// Config filename (supports multiple extensions)
-    const CONFIG_BASENAME: &'static str = "settings";
-    const SUPPORTED_EXTENSIONS: &'static [&'static str] = &["toml", "yaml", "json"];
-    
-    fn resolve_path(scope: ConfigScope) -> Option<PathBuf> {
-        match scope {
-            ConfigScope::UserGlobal => {
-                directories::ProjectDirs::from("", Self::ORG_NAME, Self::APP_NAME)
-                    .map(|d| Self::find_config_in(d.config_dir()))
-            }
-            ConfigScope::ProjectLocal => {
-                Self::find_config_in(Path::new("."))
-            }
-            // ...
-        }
-    }
-    
-    fn find_config_in(dir: &Path) -> Option<PathBuf> {
-        for ext in Self::SUPPORTED_EXTENSIONS {
-            let path = dir.join(format!("{}.{}", Self::CONFIG_BASENAME, ext));
-            if path.exists() {
-                return Some(path);
-            }
-        }
-        None
-    }
+fn init_editors(&mut self, project_path: Option<&Path>) {
+    // Manual path management, error handling for each scope
+}
+```
+
+**Turtle API After** (using settings-loader):
+```rust
+let (config, sources) = TurtleConfig::load_multi_scope()?;
+
+// Query where a value came from
+if let Some(meta) = sources.source_of("llm.provider") {
+    println!("LLM provider set in {:?}", meta.scope);
 }
 ```
 
@@ -180,41 +228,25 @@ pub trait ScopedConfig: SettingsLoader {
 
 ### 4. Environment Variable Format Customization
 
-**Source**: `spark-turtle` uses `TURTLE__LLM__OLLAMA__BASE_URL` format
+**Current turtle implementation**:
+- Hardcoded `TURTLE__` prefix
+- Hardcoded `__` separator
+- No customization
 
-**Current settings-loader**: Hardcoded `APP__` prefix
+**Integration Point**: Trait method in settings-loader
 
-**Proposed Change**:
 ```rust
-pub trait LoadingOptions: Sized {
-    // ... existing methods ...
-    
-    /// Prefix for environment variable overrides
-    /// Default: "APP"
+pub trait LoadingOptions {
     fn env_prefix() -> &'static str { "APP" }
-    
-    /// Separator between nested keys in env vars
-    /// Default: "__"  
     fn env_separator() -> &'static str { "__" }
-    
-    /// Transform a config key to env var name
-    /// Default: PREFIX + key.replace('.', separator).to_uppercase()
-    fn key_to_env_var(key: &str) -> String {
-        format!(
-            "{}{}{}",
-            Self::env_prefix(),
-            Self::env_separator(),
-            key.to_uppercase().replace('.', Self::env_separator())
-        )
-    }
 }
 ```
 
-**turtle usage would become**:
+**Turtle API After**:
 ```rust
 impl LoadingOptions for TurtleOptions {
     fn env_prefix() -> &'static str { "TURTLE" }
-    // ... rest unchanged
+    // Returns "TURTLE__LLM__OLLAMA__BASE_URL"
 }
 ```
 
@@ -222,44 +254,32 @@ impl LoadingOptions for TurtleOptions {
 
 ### 5. Source Provenance Tracking
 
-**Source**: `spark-turtle` needs to show "Effective" view with source indicators
+**Current turtle limitation**:
+- No way to tell if setting came from environment or file
+- "Effective" config loses source information
+- Users can't understand where values came from
 
-**Current turtle approach**: Separate effective config view without sources
+**Integration Point**: `SourceMap` in settings-loader (Phase 0)
 
-**Proposed for settings-loader**:
 ```rust
-pub struct LoadedSettings<T> {
-    pub settings: T,
-    pub sources: SourceMap,
-}
-
 pub struct SourceMap {
-    entries: HashMap<String, SettingSource>,
+    entries: HashMap<String, (SourceMetadata, Value)>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SettingSource {
-    Default,
-    File { path: PathBuf, line: Option<usize> },
-    Environment { var_name: String },
-    CliArgument { flag: String },
-    Computed,
-}
-
-impl SettingSource {
-    pub fn display_name(&self) -> &str {
-        match self {
-            Self::Default => "Default",
-            Self::File { path, .. } => path.file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("File"),
-            Self::Environment { .. } => "Environment",
-            Self::CliArgument { .. } => "CLI",
-            Self::Computed => "Computed",
-        }
-    }
+pub struct SourceMetadata {
+    pub source_type: SourceType,  // File, Environment, Default
+    pub path: Option<PathBuf>,
+    pub scope: Option<ConfigScope>,  // Which scope?
 }
 ```
+
+**Benefits**:
+- Track which file provided each setting
+- Track which environment variable
+- Track which scope (UserGlobal vs ProjectLocal)
+- Enable "show origin" feature in TUI
+
+**Usage**:
 
 ---
 

@@ -5,10 +5,11 @@ This document outlines strategic improvements for `settings-loader-rs` based on 
 ## Executive Summary
 
 The current `settings-loader-rs` excels at **loading** configuration from multiple sources but lacks:
-1. **Configuration editing/writing** capabilities
-2. **Settings introspection** for UI integration
-3. **Multi-scope management** (user-global vs. project-local)
-4. **Type-aware metadata** for validation and UI rendering
+1. **Source provenance tracking** - Know which layer provided each value
+2. **Configuration editing/writing** - Edit individual layers, preserve comments
+3. **Explicit layering** - Organize sources into named layers
+4. **Multi-scope management** - User-global vs. project-local distinction
+5. **Type-aware metadata** - For validation and UI rendering
 
 These gaps forced `spark-turtle` to implement parallel systems (`ConfigEditor`, `SettingsRegistry`) that could be consolidated into the loader.
 
@@ -39,9 +40,112 @@ These gaps forced `spark-turtle` to implement parallel systems (`ConfigEditor`, 
 
 ## Proposed Improvements
 
-### Phase 1: Configuration Writing (Core)
+## Foundation: Why Wrap Config Crate?
 
-Add bidirectional configuration support - read AND write.
+Settings-loader proposes wrapping the config crate rather than replacing it because:
+
+1. **Irreplaceable serde integration**
+   - config crate implements Deserializer trait
+   - Enables direct deserialization: `config.try_deserialize::<T>()?`
+   - This capability is worth preserving
+
+2. **Proven merging logic**
+   - config crate's source composition and precedence rules are battle-tested
+   - Merging complexity shouldn't be re-implemented
+
+3. **Multi-format support**
+   - JSON, YAML, TOML, HJSON, RON via plugins
+   - No need to re-implement format support
+
+4. **Non-invasive provenance**
+   - Provenance tracking happens in parallel
+   - Doesn't modify config's merge algorithm
+   - Completely backward compatible
+
+**Result**: Add new layers on top rather than replacing bottom layer.
+
+## Phase 0: Source Provenance (NEW)
+
+**NEW PHASE - Insert as foundational work**
+
+Enable tracking of which source provided each configuration value.
+
+```rust
+pub struct SourceMetadata {
+    pub id: String,            // "defaults", "file:config.yml", "env:APP_"
+    pub source_type: SourceType,
+    pub path: Option<PathBuf>,
+    pub scope: Option<ConfigScope>,
+}
+
+pub struct SourceMap {
+    entries: HashMap<String, (SourceMetadata, Value)>,
+}
+
+pub fn load_with_provenance<T: DeserializeOwned>(
+    sources: Vec<ConfigSource>,
+) -> Result<(T, SourceMap)>;
+```
+
+**Why this phase is foundational**:
+- Enables layer-scoped editing (Phase 1)
+- Prerequisites multi-scope (Phase 3)
+- Enables source visualization (UX feature)
+
+**Benefits**:
+- Users can see where each setting came from
+- Applications can track configuration origins
+- Prerequisite for multi-scope path resolution
+- Enables intelligent editing at layer level
+
+### Phase 1: Explicit Layering (formerly "Configuration Writing")
+
+Provide explicit control over configuration source composition.
+
+**Before** (implicit, hardcoded):
+```rust
+// Old code - layering is implicit, ordering is hidden
+let config = load_from_default_location()?;
+```
+
+**After** (explicit, controlled):
+```rust
+let mut builder = LayerBuilder::new();
+builder
+    .with_defaults(metadata_defaults)
+    .with_path("/etc/app/settings.toml")
+    .with_env_vars("APP_", "__")
+    .with_path("./settings.local.toml");
+    
+let (settings, sources) = builder.build::<AppSettings>()?;
+
+// Now you know exactly what merged into what, in what order
+```
+
+**Uses Foundation (Phase 0)**:
+- Each layer wrapped with SourceMetadata
+- SourceMap tracks which layer provided each value
+- Explicit over implicit - programmer controls precedence
+
+**New Trait**:
+```rust
+pub struct LayerBuilder {
+    layers: Vec<(LayerName, ConfigSource)>,
+}
+
+impl LayerBuilder {
+    pub fn with_defaults(defaults: Map<String, Value>) -> Self;
+    pub fn with_path(path: PathBuf) -> Self;
+    pub fn with_env_vars(prefix: &str, separator: &str) -> Self;
+    pub fn build<T: DeserializeOwned>(self) -> Result<(T, SourceMap)>;
+}
+
+// Environment variable customization (optional)
+pub trait LoadingOptions {
+    fn env_prefix() -> &'static str { "APP" }
+    fn env_separator() -> &'static str { "__" }
+}
+```
 
 ```rust
 // New trait for bidirectional config
@@ -72,7 +176,7 @@ pub trait ConfigEditor {
 - Create parent directories on save
 - Atomic writes (write to temp, then rename)
 
-### Phase 2: Settings Metadata Registry
+### Phase 3: Settings Metadata Registry
 
 Add compile-time or runtime metadata for settings introspection.
 
@@ -108,9 +212,43 @@ pub trait HasMetadata: SettingsLoader {
 - Validation with meaningful error messages
 - Schema generation for documentation
 
-### Phase 3: Multi-Scope Configuration
+### Phase 2: Multi-Scope Configuration (formerly Phase 3)
 
-First-class support for user-global and project-local configurations.
+Automatically discover and merge configuration from multiple scopes.
+
+**Uses Foundation (Phase 0)**:
+- SourceMap tracks which scope each value came from
+- Path resolution per scope
+- Automatic precedence: System → UserGlobal → ProjectLocal → Runtime
+
+**New Trait**:
+```rust
+pub enum ConfigScope {
+    System,           // /etc/app/settings.toml
+    UserGlobal,       // ~/.config/app/settings.toml
+    ProjectLocal,     // ./settings.toml
+    Runtime,          // APP_* environment variables
+}
+
+pub trait MultiScopeLoader: DeserializeOwned {
+    const APP_NAME: &'static str;
+    
+    fn load_multi_scope() -> Result<(Self, SourceMap)>;
+}
+```
+
+**How SourceMap helps**:
+```rust
+let (settings, sources) = AppSettings::load_multi_scope()?;
+
+match sources.source_of("database.host") {
+    Some(meta) if meta.scope == Some(ConfigScope::UserGlobal) =>
+        println!("User overrode db host"),
+    Some(meta) if meta.scope == Some(ConfigScope::ProjectLocal) =>
+        println!("Project specified db host"),
+    _ => println!("Using system default"),
+}
+```
 
 ```rust
 pub trait MultiScopeSettings: SettingsLoader {
@@ -123,13 +261,7 @@ pub trait MultiScopeSettings: SettingsLoader {
     fn setting_source(key: &str) -> SettingSource;
 }
 
-pub enum SettingSource {
-    Default,
-    UserGlobal,
-    ProjectLocal,
-    Environment,
-    CliOverride,
-}
+// Replaced by Phase 2 MultiScopeLoader and Phase 0 SourceMap
 ```
 
 **Benefits:**
@@ -140,32 +272,48 @@ pub enum SettingSource {
 
 ### Phase 4: Customizable Environment Variable Format
 
-Allow applications to customize env var naming conventions.
+Moved to Phase 1 (Explicit Layering) as trait methods on `LoadingOptions`.
 
+### Phase 4: Configuration Editing
+
+Enable reading and writing of configuration files while preserving structure and comments.
+
+**Uses Foundation (Phase 0)**:
+- SourceMap tracks which file belongs to which scope
+- Edit only the target scope, don't touch other scopes
+
+**New Type**:
 ```rust
-pub trait LoadingOptions: Sized {
-    // Existing...
-    
-    /// Customize env var prefix (default: "APP")
-    fn env_prefix() -> &'static str { "APP" }
-    
-    /// Customize separator (default: "__")
-    fn env_separator() -> &'static str { "__" }
-    
-    /// Custom key transformation
-    fn env_key_transform(key: &str) -> String {
-        format!("{}_{}", Self::env_prefix(), key.to_uppercase().replace('.', Self::env_separator()))
-    }
+pub struct LayerEditor {
+    scope: ConfigScope,
+    path: PathBuf,
+    backend: EditorBackend,  // toml_edit, json, yaml
+}
+
+impl LayerEditor {
+    pub fn for_scope(scope: ConfigScope) -> Result<Self>;
+    pub fn get<T: FromStr>(&self, key: &str) -> Result<T>;
+    pub fn set<T: ToString>(&mut self, key: &str, value: T) -> Result<()>;
+    pub fn save(&self) -> Result<()>;  // Preserves comments
 }
 ```
 
-**Example:**
-- `spark-turtle` uses `TURTLE__LLM__OLLAMA__BASE_URL`
-- Default would be `APP__LLM__OLLAMA__BASE_URL`
+**Example**:
+```rust
+// Edit only project-local settings
+let mut editor = LayerEditor::for_scope(ConfigScope::ProjectLocal)?;
+editor.set("database.host", "prod.db.example.com")?;
+editor.save()?;  // Saves to ./settings.toml, comments preserved
 
-### Phase 5: Enhanced Error Types
+// User-global and system defaults untouched
+```
 
-Improve error messages for configuration issues.
+**Format Support**:
+- **TOML**: Full comment preservation via toml_edit
+- **JSON**: Standard JSON editing via serde_json
+- **YAML**: Limited comment support via serde_yaml
+
+**Auto-detection**: Format detected from file extension
 
 ```rust
 #[derive(Debug, Error)]
@@ -194,10 +342,10 @@ pub enum SettingsError {
 
 | turtle Component | → settings-loader Feature |
 |-----------------|---------------------------|
-| `ConfigEditor` | Phase 1: Configuration Writing |
-| `SettingsRegistry` | Phase 2: Settings Metadata |
-| User/Project path logic | Phase 3: Multi-Scope |
-| `TURTLE__` env vars | Phase 4: Custom Env Format |
+| `ConfigEditor` | Phase 0 + Phase 4: LayerEditor (wraps config) |
+| `SettingsRegistry` | Phase 5: ConfigSchema (optional) |
+| User/Project path logic | Phase 2: MultiScopeLoader |
+| `TURTLE__` env vars | Phase 1: LoadingOptions trait method |
 
 ### Migration Path
 

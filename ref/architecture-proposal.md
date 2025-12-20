@@ -22,76 +22,177 @@ This document proposes architectural changes to modernize `settings-loader-rs` b
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Limitations
+### Limitations (As of v0.15.0)
 
 1. **One-way data flow**: Load only, no write-back
+   - **Solution (Phase 4)**: LayerEditor for bidirectional editing
 2. **Single output**: One merged struct, no per-scope access
+   - **Solution (Phase 3)**: MultiScopeLoader for explicit scope management
 3. **Opaque merging**: Cannot track which source provided which value
+   - **Solution (Phase 2)**: SourceMap for source provenance tracking
 4. **No runtime introspection**: Keys/types not discoverable
+   - **Solution (Phase 5)**: ConfigSchema trait for metadata access
+5. **Single scope**: No user-global vs project-local distinction
+   - **Solution (Phase 3)**: ConfigScope enum with path resolution
 
 ---
 
 ## Proposed Architecture
 
-### Core Design: Layered Configuration Stack
+### Core Design: Wrapped Architecture with Provenance
+
+The proposed architecture wraps the config crate with additional layers rather than replacing it:
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                     ConfigurationStack                          │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌──────────┐  │
-│  │   Default   │ │ User Global │ │ Project     │ │ Runtime  │  │
-│  │   Layer     │ │ Layer       │ │ Local Layer │ │ Overrides│  │
-│  │             │ │ ~/.config/  │ │ ./app.toml  │ │ Env+CLI  │  │
-│  └─────────────┘ └─────────────┘ └─────────────┘ └──────────┘  │
-│         │               │              │               │        │
-│         └───────────────┴──────────────┴───────────────┘        │
-│                            │                                     │
-│                    ┌───────▼────────┐                           │
-│                    │ Merge Engine   │                           │
-│                    │ (with provenance)                          │
-│                    └───────┬────────┘                           │
-│                            │                                     │
-│              ┌─────────────┴─────────────┐                      │
-│              ▼                           ▼                      │
-│     ┌────────────────┐          ┌────────────────┐             │
-│     │ Effective      │          │ Source Map     │             │
-│     │ Configuration  │          │ (key → origin) │             │
-│     └────────────────┘          └────────────────┘             │
-└─────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────┐
+│  Application Layer                             │
+│  let (s, src) = load_with_provenance()?        │
+└────────────────┬────────────────────────────┘
+                 │
+        ┌────────┴─────────┐
+        ▼                  ▼
+    LayerBuilder    MultiScopeLoader  LayerEditor
+    (Phase 1)       (Phase 3)          (Phase 4)
+        │                  │                │
+        └────────┬─────────┴────────────────┘
+                 │
+        ┌────────▼────────────────┐
+        │ SourceMetadata +        │
+        │ Provenance Tracking     │
+        │ (Phase 2 - NEW)         │
+        └────────┬────────────────┘
+                 │
+        ┌────────▼────────────────┐
+        │ Config Crate            │
+        │ (Merge + Serde)         │
+        │ (UNCHANGED)             │
+        └────────┬────────────────┘
+                 │
+        ┌────────▼────────────────┐
+        │ Typed Settings          │
+        │ (Deserialized)          │
+        └────────────────────────┘
+
+    ConfigSchema (Phase 5) is independent,
+    works alongside this flow.
 ```
+
+**Key principle**: Each layer preserves the layer below, adds new capability on top.
 
 ### New Trait Hierarchy
 
 ```rust
-// Base trait (unchanged external API)
+// Base trait (unchanged, preserved from v0.15.0)
 pub trait SettingsLoader: Sized + DeserializeOwned {
     type Options: LoadingOptions;
-    fn load(options: &Self::Options) -> Result<Self, Self::Options::Error>;
+    fn load(options: &Self::Options) -> Result<Self>;
 }
 
-// NEW: Bidirectional editing
-pub trait SettingsEditor: SettingsLoader {
-    type Editor: LayerEditor;
-    
-    fn editor(scope: ConfigScope, options: &Self::Options) -> Result<Self::Editor>;
-    fn commit(editor: Self::Editor) -> Result<()>;
+// NEW: Phase 2 - Source Provenance
+pub fn load_with_provenance<T: DeserializeOwned>(
+    sources: Vec<ConfigSource>,
+) -> Result<(T, SourceMap)>;
+
+pub struct SourceMetadata {
+    pub id: String,
+    pub source_type: SourceType,
+    pub path: Option<PathBuf>,
+    pub scope: Option<ConfigScope>,
 }
 
-// NEW: Introspection for UIs
-pub trait SettingsIntrospection: SettingsLoader {
-    fn schema() -> ConfigSchema;
-    fn metadata() -> &'static [SettingMetadata];
+pub struct SourceMap {
+    entries: HashMap<String, (SourceMetadata, Value)>,
 }
 
-// NEW: Source tracking
-pub trait SettingsProvenance: SettingsLoader {
-    fn load_with_provenance(options: &Self::Options) -> Result<(Self, SourceMap)>;
+// NEW: Phase 1 - Explicit Layering
+pub struct LayerBuilder {
+    layers: Vec<(LayerName, ConfigSource)>,
+}
+
+// NEW: Phase 4 - Bidirectional Editing
+pub struct LayerEditor {
+    scope: ConfigScope,
+    backend: EditorBackend,
+}
+
+// NEW: Phase 3 - Multi-Scope
+pub enum ConfigScope {
+    System,
+    UserGlobal,
+    ProjectLocal,
+    Runtime,
+}
+
+// NEW: Phase 5 - Introspection (Optional)
+pub trait SettingsIntrospection {
+    fn schema(&self) -> ConfigSchema;
+}
+
+pub struct ConfigSchema {
+    pub name: String,
+    pub settings: Vec<SettingMetadata>,
+    pub groups: Vec<SettingGroup>,
 }
 ```
 
 ---
 
 ## Component Deep Dives
+
+### 0. Source Provenance (NEW)
+
+Tracks which source provided each configuration value. This is the key addition that enables:
+- Layer-scoped editing (know which layer to modify)
+- Multi-scope path resolution (know which scope each value came from)
+- Source visualization (show users "where did this setting come from?")
+
+```rust
+pub struct SourceMetadata {
+    /// Unique identifier (e.g., "file:config.yml", "env:APP_")
+    pub id: String,
+    /// Type of source
+    pub source_type: SourceType,
+    /// Optional file path
+    pub path: Option<PathBuf>,
+    /// Optional scope (for multi-scope configs)
+    pub scope: Option<ConfigScope>,
+}
+
+pub enum SourceType {
+    Default,
+    File,
+    Environment,
+    Override,
+}
+
+pub struct SourceMap {
+    /// Maps setting key to its origin
+    entries: HashMap<String, (SourceMetadata, Value)>,
+}
+
+impl SourceMap {
+    pub fn source_of(&self, key: &str) -> Option<&SourceMetadata>;
+    pub fn all_from(&self, source_type: SourceType) -> Vec<(&str, Value)>;
+}
+```
+
+**Usage**:
+```rust
+let (settings, sources) = load_with_provenance::<AppSettings>()?;
+
+match sources.source_of("database.host") {
+    Some(meta) => println!("from {:?}: {:?}", meta.source_type, meta.path),
+    None => println!("using default"),
+}
+```
+
+**How it works**:
+1. Each source (File, Environment, etc.) is wrapped with SourceMetadata
+2. As config crate merges sources, we track them in parallel
+3. Returns both the deserialized struct AND the SourceMap
+4. Config crate's merge is completely unchanged
+5. Provenance tracking is orthogonal (doesn't interfere with serde)
+```
 
 ### 1. Layer Editor
 
@@ -258,12 +359,22 @@ pub trait MultiScopeConfig: Sized {
 
 ### Backward Compatibility
 
-All new traits are **additive**. Existing code continues to work:
+All changes are **additive**. Existing code continues to work:
 
 ```rust
-// This still works exactly as before
+// v0.15.0 API - still works unchanged
 let settings = MySettings::load(&options)?;
+
+// v1.0.0 API - new, opt-in
+let (settings, sources) = load_with_provenance::<MySettings>()?;
 ```
+
+**Preservation of config crate**:
+- Config crate remains the bottom layer
+- Serde deserialization unchanged
+- Multi-source composition unchanged
+- All merging precedence unchanged
+- New layers wrap above, don't modify below
 
 ### Opt-in Features
 
@@ -347,6 +458,12 @@ for meta in AppSettings::metadata() {
 |---------|---------------------------|-----------|---------|
 | Multi-format | ✅ | ✅ | ✅ |
 | Env overlay | ✅ | ✅ | ✅ |
+| Serde integration | ✅ (config impl) | ✅ | ✅ |
+
+**Note on config-rs relationship**: settings-loader wraps and extends 
+config-rs rather than replacing it. This preserves config-rs's proven 
+serde integration while adding source provenance, layer editing, and 
+multi-scope support on top.
 | Config writing | ✅ | ❌ | ❌ |
 | Comment preservation | ✅ (TOML) | ❌ | ❌ |
 | Source tracking | ✅ | ❌ | ✅ |
