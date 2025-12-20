@@ -27,6 +27,7 @@ suspicious = "warn"
 resolver = "2"
 
 [features]
+default = ["metadata"]
 database = ["sqlx", "secrecy", "zeroize"]
 http = ["url"]
 multi-scope = ["directories"]

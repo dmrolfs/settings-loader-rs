@@ -57,10 +57,10 @@ pub static TEST_TRACING: Lazy<()> = Lazy::new(|| {
     let default_filter_level = "info";
     let subscriber_name = "test";
     if std::env::var("TEST_LOG").is_ok() {
-        let subscriber = get_subscriber(subscriber_name, default_filter_level, std::io::stdout);
+        let subscriber = subscriber(subscriber_name, default_filter_level, std::io::stdout);
         init_subscriber(subscriber);
     } else {
-        let subscriber = get_subscriber(subscriber_name, default_filter_level, std::io::sink);
+        let subscriber = subscriber(subscriber_name, default_filter_level, std::io::sink);
         init_subscriber(subscriber);
     };
 });
@@ -82,11 +82,11 @@ pub static TEST_TRACING: Lazy<()> = Lazy::new(|| {
 ///
 /// # Example
 /// ```rust, ignore
-/// let subscriber = get_subscriber("test", "debug", std::io::stdout);
+/// let subscriber = subscriber("test", "debug", std::io::stdout);
 /// init_subscriber(subscriber);
 /// ```
 #[allow(unused)]
-pub fn get_subscriber<S0, S1, W>(name: S0, env_filter: S1, sink: W) -> impl Subscriber + Sync + Send
+pub fn subscriber<S0, S1, W>(name: S0, env_filter: S1, sink: W) -> impl Subscriber + Sync + Send
 where
     S0: Into<String>,
     S1: AsRef<str>,
@@ -113,7 +113,7 @@ where
 ///
 /// # Example
 /// ```rust, ignore
-/// let subscriber = get_subscriber("test", "info", std::io::stdout);
+/// let subscriber = subscriber("test", "info", std::io::stdout);
 /// init_subscriber(subscriber);
 /// ```
 pub fn init_subscriber(subscriber: impl Subscriber + Sync + Send) {

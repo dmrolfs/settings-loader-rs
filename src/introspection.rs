@@ -1,4 +1,4 @@
-//! Phase 5.2: Settings Introspection Trait
+//! Settings Introspection Trait
 //!
 //! This module provides runtime introspection capabilities for configuration schemas.
 //! The SettingsIntrospection trait enables querying, filtering, and analyzing configuration
@@ -61,7 +61,7 @@ pub trait SettingsIntrospection {
     ///
     /// Returns None if the setting key doesn't exist.
     /// Note: This returns metadata about a setting, not its current value.
-    fn get_setting_metadata(&self, key: &str) -> Option<SettingMetadata> {
+    fn setting_metadata(&self, key: &str) -> Option<SettingMetadata> {
         self.schema().settings.into_iter().find(|s| s.key == key)
     }
 
@@ -115,11 +115,11 @@ pub trait SettingsIntrospection {
     /// Returns empty vector if group doesn't exist.
     fn settings_in_group(&self, group_name: &str) -> Vec<SettingMetadata> {
         let schema = self.schema();
-        let group_setting_keys: Vec<String> = schema
+        let group_setting_keys: std::collections::HashSet<_> = schema
             .groups
             .iter()
             .filter(|g| g.name == group_name)
-            .flat_map(|g| g.settings.clone())
+            .flat_map(|g| g.settings.iter())
             .collect();
 
         schema
@@ -196,8 +196,8 @@ pub trait SettingsIntrospection {
     /// Get the default value for a setting by key
     ///
     /// Returns None if setting doesn't exist or has no default.
-    fn get_default_value(&self, key: &str) -> Option<serde_json::Value> {
-        self.get_setting_metadata(key).and_then(|s| s.default)
+    fn default_value(&self, key: &str) -> Option<serde_json::Value> {
+        self.setting_metadata(key).and_then(|s| s.default)
     }
 
     // ========================================================================
@@ -208,14 +208,14 @@ pub trait SettingsIntrospection {
     ///
     /// Returns true if the setting exists, false otherwise.
     fn validate_setting(&self, key: &str) -> bool {
-        self.get_setting_metadata(key).is_some()
+        self.setting_metadata(key).is_some()
     }
 
     /// Validate that a setting with the given key has the expected type
     ///
     /// Returns true if the setting exists and matches the type.
     fn validate_setting_type(&self, key: &str, expected_type: &SettingType) -> bool {
-        self.get_setting_metadata(key)
+        self.setting_metadata(key)
             .map(|s| s.setting_type == *expected_type)
             .unwrap_or(false)
     }
@@ -257,7 +257,7 @@ pub trait SettingsIntrospection {
     fn validate_setting_value(
         &self, key: &str, value: &serde_json::Value,
     ) -> Result<ValidationResult, ValidationError> {
-        match self.get_setting_metadata(key) {
+        match self.setting_metadata(key) {
             Some(metadata) => Ok(metadata.validate(value)),
             None => Err(ValidationError::ConstraintViolation {
                 key: key.to_string(),
@@ -717,7 +717,7 @@ mod tests {
     #[test]
     fn test_get_setting_by_key() {
         let settings = TestSettings;
-        let setting = settings.get_setting_metadata("api_url");
+        let setting = settings.setting_metadata("api_url");
 
         assert!(setting.is_some());
         let setting = setting.unwrap();
@@ -793,7 +793,7 @@ mod tests {
     #[test]
     fn test_nested_object_constraints() {
         let settings = NestedTestSettings;
-        let database_setting = settings.get_setting_metadata("database").unwrap();
+        let database_setting = settings.setting_metadata("database").unwrap();
 
         if let SettingType::Object { fields } = &database_setting.setting_type {
             let port_field = &fields[1];
@@ -946,7 +946,7 @@ mod tests {
         assert!(metadata.key.contains('_'));
 
         // Verify get_setting works with underscores
-        let api_url = settings.get_setting_metadata("api_url");
+        let api_url = settings.setting_metadata("api_url");
         assert!(api_url.is_some());
     }
 

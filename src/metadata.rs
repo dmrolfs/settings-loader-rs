@@ -1,4 +1,4 @@
-//! Phase 5: Settings Metadata & Introspection
+//! Settings Metadata & Introspection
 //!
 //! This module provides core types for describing, introspecting, and validating
 //! application configuration settings at runtime.

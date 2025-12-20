@@ -1,4 +1,4 @@
-//! Configuration editing and writing support (Phase 4)
+//! Configuration editing and writing support
 //!
 //! This module provides bidirectional configuration management with format-specific
 //! backends. Enables reading, modifying, and saving configuration files while

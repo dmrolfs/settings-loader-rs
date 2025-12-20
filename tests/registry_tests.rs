@@ -20,7 +20,7 @@ fn test_registry_registration() {
 
     registry.register(metadata.clone());
 
-    let retrieved = registry.get_metadata("server.port").expect("should find metadata");
+    let retrieved = registry.metadata("server.port").expect("should find metadata");
     assert_eq!(retrieved.key, "server.port");
     assert_eq!(retrieved.label, "Server Port");
 }

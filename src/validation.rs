@@ -1,7 +1,7 @@
-//! Phase 5.3: Validation System - Core Types
+//! Validation System - Core Types
 //!
 //! This module provides the validation framework for constraint-based value validation
-//! using metadata from Phase 5.1 and introspection from Phase 5.2.
+//! using metadata and introspection.
 //!
 //! # Core Types
 //!

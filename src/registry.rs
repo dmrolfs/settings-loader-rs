@@ -1,4 +1,4 @@
-//! Phase 5.1: Settings Registry
+//! Settings Registry
 //!
 //! This module provides a centralized registry for configuration metadata.
 //! The SettingsRegistry allows applications to define and store metadata about
@@ -41,7 +41,7 @@ impl SettingsRegistry {
     }
 
     /// Register multiple settings
-    pub fn register_many(&mut self, settings: Vec<SettingMetadata>) {
+    pub fn register_many(&mut self, settings: impl IntoIterator<Item = SettingMetadata>) {
         for setting in settings {
             self.register(setting);
         }
@@ -53,7 +53,7 @@ impl SettingsRegistry {
     }
 
     /// Get metadata for a specific setting by key
-    pub fn get_metadata(&self, key: &str) -> Option<&SettingMetadata> {
+    pub fn metadata(&self, key: &str) -> Option<&SettingMetadata> {
         self.settings.get(key)
     }
 

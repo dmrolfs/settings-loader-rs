@@ -1,19 +1,19 @@
-//! Phase 5.4.1: Integration Test Suite - Metadata with Other Phases
+//! Metadata Integration Test Suite
 //!
-//! Comprehensive integration test suite demonstrating Phase 5 (metadata/validation/introspection)
-//! working with Phases 1-4 and real-world use cases.
+//! Comprehensive integration test suite demonstrating metadata, validation, and introspection
+//! working with layering and real-world use cases.
 //!
 //! **Test Coverage (10+ tests)**
 //!
 //! 1. **Manual SettingsIntrospection Implementation** - Show how to manually impl trait
-//! 2. **Metadata + Layer Integration** - Phase 5 metadata with Phase 1 explicit layering
-//! 3. **Validation Before Editor Save** - Phase 4 editor + Phase 5 validation
+//! 2. **Metadata + Layer Integration** - Metadata defaults working with explicit layering
+//! 3. **Validation Before Editor Save** - Validating changes before saving
 //! 4. **TUI Form Generation** - Auto-generate form fields from metadata
 //! 5. **CLI Help Generation** - Auto-generate help text from schema
 //! 6. **Secret Filtering** - Hide secrets in UI based on visibility
 //! 7. **Group Organization** - Display settings organized by groups
 //! 8. **Batch Validation** - Validate entire config at once
-//! 9. **Multi-Scope Integration** - Phase 3 multi-scope with introspection
+//! 9. **Multi-Scope Integration** - Multi-scope configuration with introspection
 //! 10. **Backward Compatibility** - Works without SettingsIntrospection impl
 //!
 //! **Real-World Scenarios**
@@ -26,7 +26,7 @@
 
 #[cfg(test)]
 #[cfg(feature = "metadata")]
-mod phase5_4_integration_tests {
+mod metadata_integration_tests {
     use serde_json::json;
     use settings_loader::introspection::SettingsIntrospection;
     use settings_loader::metadata::{ConfigSchema, Constraint, SettingGroup, SettingMetadata, SettingType, Visibility};
@@ -261,20 +261,20 @@ mod phase5_4_integration_tests {
         assert_eq!(schema.groups.len(), 2);
 
         // Verify we can retrieve specific settings
-        let log_level = settings.get_setting_metadata("log_level");
+        let log_level = settings.setting_metadata("log_level");
         assert!(log_level.is_some());
         assert_eq!(log_level.unwrap().label, "Log Level");
     }
 
     // ========================================================================
-    // TEST 2: Metadata + Layer Integration (Phase 1 + Phase 5)
+    // TEST 2: Metadata + Layer Integration
     // ========================================================================
 
-    /// Phase 5 metadata working with Phase 1 explicit layering
+    /// Metadata defaults working with explicit layering
     /// Demonstrates how configuration layers can use metadata validation
     #[test]
     fn test_metadata_with_explicit_layering() {
-        // Simulating Phase 1 explicit layering behavior
+        // Simulating explicit layering behavior
         let settings = DatabaseSettings;
 
         // Layer 1: Get defaults from metadata
@@ -300,10 +300,10 @@ mod phase5_4_integration_tests {
     }
 
     // ========================================================================
-    // TEST 3: Validation Before Editor Save (Phase 4 + Phase 5)
+    // TEST 3: Validation Before Editor Save
     // ========================================================================
 
-    /// Phase 4 config editor + Phase 5 validation
+    /// Config editor + Validation
     /// Demonstrates validating before saving changes
     #[test]
     fn test_validation_before_editor_save() {
@@ -355,7 +355,7 @@ mod phase5_4_integration_tests {
                 .iter()
                 .filter_map(|key| {
                     settings
-                        .get_setting_metadata(key)
+                        .setting_metadata(key)
                         .map(|s| format!("{}: {}", s.label, s.description))
                 })
                 .collect();
@@ -404,7 +404,7 @@ mod phase5_4_integration_tests {
             help_text.push_str(&format!("{}\n\n", group.description));
 
             for key in &group.settings {
-                if let Some(setting) = settings.get_setting_metadata(key) {
+                if let Some(setting) = settings.setting_metadata(key) {
                     help_text.push_str(&format!("  {}:\n", setting.label));
                     help_text.push_str(&format!("    {}\n", setting.description));
 
@@ -416,7 +416,7 @@ mod phase5_4_integration_tests {
                     if let Some(default) = &setting.default {
                         help_text.push_str(&format!("    Default: {}\n", default));
                     }
-                    help_text.push_str("\n");
+                    help_text.push('\n');
                 }
             }
         }
@@ -544,14 +544,14 @@ mod phase5_4_integration_tests {
     }
 
     // ========================================================================
-    // TEST 9: Multi-Scope Integration (Phase 3 + Phase 5)
+    // TEST 9: Multi-Scope Integration
     // ========================================================================
 
-    /// Phase 3 multi-scope with Phase 5 introspection
+    /// Multi-scope configuration with introspection
     /// Demonstrates metadata working across multiple configuration scopes
     #[test]
     fn test_introspection_with_multi_scope() {
-        // Simulating Phase 3 multi-scope: different scopes have different settings visibility
+        // Simulating multi-scope: different scopes have different settings visibility
         let settings = ApiServerSettings;
 
         // User scope: all public settings visible
@@ -651,7 +651,7 @@ mod phase5_4_integration_tests {
     // ========================================================================
 
     /// Real-world scenario: API server configuration with layered approach
-    /// Demonstrates Phase 1 (layers) + Phase 5 (metadata) integration
+    /// Demonstrates layering + metadata integration
     #[test]
     fn test_api_server_multi_layer_configuration() {
         let settings = ApiServerSettings;
@@ -675,7 +675,7 @@ mod phase5_4_integration_tests {
             "cache_ttl_seconds": 60
         });
 
-        // Merge layers (simulating Phase 1 explicit layering)
+        // Merge layers (simulating explicit layering)
         let merged = json!({
             "api_url": defaults["api_url"],
             "api_timeout_secs": env_overrides["api_timeout_secs"],
