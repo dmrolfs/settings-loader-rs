@@ -76,8 +76,11 @@ pub mod error;
 mod internals;
 pub mod layer;
 pub mod loading_options;
+pub mod provenance;
 pub mod scope;
 pub mod settings_loader;
+
+pub use provenance::{SourceMap, SourceMetadata, SourceType};
 
 #[cfg(feature = "editor")]
 pub mod editor;

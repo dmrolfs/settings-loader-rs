@@ -70,7 +70,9 @@ use config::builder::DefaultState;
 use config::{Config, ConfigBuilder};
 use path_absolutize::Absolutize;
 
+use crate::provenance::{SourceMap, SourceMetadata, SourceType};
 use crate::{Environment, SettingsError};
+use config::Source;
 
 type ConfigFile = config::File<config::FileSourceFile, config::FileFormat>;
 
@@ -101,6 +103,13 @@ pub enum ConfigLayer {
     /// Prefix determines the env var namespace (e.g., "APP" → APP_*)
     /// Separator determines path nesting (e.g., "__" → APP_DB__HOST)
     EnvVars { prefix: String, separator: String },
+
+    /// Load configuration from a file with specific scope information.
+    /// Identical to Path but carries source scope metadata.
+    ScopedPath {
+        path: PathBuf,
+        scope: crate::scope::ConfigScope,
+    },
 }
 
 impl ConfigLayer {
@@ -127,6 +136,11 @@ impl ConfigLayer {
     /// Returns true if this is an EnvVars layer.
     pub fn is_env_vars(&self) -> bool {
         matches!(self, ConfigLayer::EnvVars { .. })
+    }
+
+    /// Returns true if this is a ScopedPath layer.
+    pub fn is_scoped_path(&self) -> bool {
+        matches!(self, ConfigLayer::ScopedPath { .. })
     }
 }
 
@@ -223,7 +237,8 @@ impl LayerBuilder {
     ) -> Self {
         for scope in scopes {
             if let Some(path) = T::resolve_path(scope) {
-                self = self.with_path(path);
+                // Use ScopedPath to preserve scope info for provenance
+                self.layers.push(ConfigLayer::ScopedPath { path, scope });
             }
         }
         self
@@ -322,6 +337,18 @@ impl LayerBuilder {
                     // For now, skip this layer
                     config
                 },
+                ConfigLayer::ScopedPath { path, .. } => {
+                    // Same logic as Path
+                    let abs_path = path.absolutize()?;
+                    // Validate file exists before adding to config
+                    std::fs::metadata(&abs_path).map_err(|_e| {
+                        SettingsError::from(io::Error::new(
+                            io::ErrorKind::NotFound,
+                            format!("config file not found: {}", abs_path.display()),
+                        ))
+                    })?;
+                    config.add_source(ConfigFile::from(abs_path.as_ref()).required(true))
+                },
                 ConfigLayer::Secrets(path) => {
                     let abs_path = path.absolutize()?;
                     // Validate file exists before adding to config
@@ -343,6 +370,130 @@ impl LayerBuilder {
         }
 
         Ok(config)
+    }
+
+    /// Build the configuration and return the source map (provenance).
+    ///
+    /// Identical to `build()`, but also tracks which source provided which value.
+    pub fn build_with_provenance(self) -> Result<(ConfigBuilder<DefaultState>, SourceMap), SettingsError> {
+        let mut config = Config::builder();
+        let mut source_map = SourceMap::new();
+
+        for layer in self.layers {
+            // 1. Create Metadata & Source
+            // We need TWO copies of the source: one for `config.add_source` (consumed),
+            // and one for `source.collect()` (to build the map).
+
+            let (metadata, source_for_config, source_for_map): (
+                SourceMetadata,
+                Box<dyn Source + Send + Sync>,
+                Box<dyn Source + Send + Sync>,
+            ) = match &layer {
+                ConfigLayer::Path(path) | ConfigLayer::ScopedPath { path, .. } => {
+                    let abs_path = path.absolutize()?;
+                    // Check existence
+                    std::fs::metadata(&abs_path).map_err(|_e| {
+                        SettingsError::from(io::Error::new(
+                            io::ErrorKind::NotFound,
+                            format!("config file not found: {}", abs_path.display()),
+                        ))
+                    })?;
+
+                    let scope = if let ConfigLayer::ScopedPath { scope, .. } = layer {
+                        Some(scope)
+                    } else {
+                        None
+                    };
+
+                    let meta = SourceMetadata::file(abs_path.to_path_buf(), scope);
+                    let s1 = ConfigFile::from(abs_path.as_ref()).required(true);
+                    let s2 = ConfigFile::from(abs_path.as_ref()).required(true);
+                    (meta, Box::new(s1), Box::new(s2))
+                },
+                ConfigLayer::EnvVar(var_name) => {
+                    let meta = SourceMetadata::env(var_name.clone());
+                    match std::env::var(var_name) {
+                        Ok(env_path) => {
+                            let abs_path = Path::new(&env_path).absolutize()?;
+                            std::fs::metadata(&abs_path).map_err(|_e| {
+                                SettingsError::from(io::Error::new(
+                                    io::ErrorKind::NotFound,
+                                    format!("config file not found: {}", abs_path.display()),
+                                ))
+                            })?;
+                            let s1 = ConfigFile::from(abs_path.as_ref()).required(true);
+                            let s2 = ConfigFile::from(abs_path.as_ref()).required(true);
+                            (meta, Box::new(s1), Box::new(s2))
+                        },
+                        Err(_) => {
+                            // Empty source if missing
+                            let s1 = config::File::from_str("", config::FileFormat::Json);
+                            let s2 = config::File::from_str("", config::FileFormat::Json);
+                            (meta, Box::new(s1), Box::new(s2))
+                        },
+                    }
+                },
+                ConfigLayer::EnvSearch { .. } => {
+                    // TODO: Implement EnvSearch
+                    let meta = SourceMetadata::default();
+                    // Return empty sources
+                    let s1 = config::File::from_str("", config::FileFormat::Json);
+                    let s2 = config::File::from_str("", config::FileFormat::Json);
+                    (meta, Box::new(s1), Box::new(s2))
+                },
+                ConfigLayer::Secrets(path) => {
+                    let abs_path = path.absolutize()?;
+                    std::fs::metadata(&abs_path).map_err(|_e| {
+                        SettingsError::from(io::Error::new(
+                            io::ErrorKind::NotFound,
+                            format!("secrets file not found: {}", abs_path.display()),
+                        ))
+                    })?;
+                    let meta = SourceMetadata {
+                        id: format!("secrets:{}", abs_path.display()),
+                        source_type: SourceType::Secrets,
+                        path: Some(abs_path.to_path_buf()),
+                        scope: None,
+                    };
+                    let s1 = ConfigFile::from(abs_path.as_ref()).required(true);
+                    let s2 = ConfigFile::from(abs_path.as_ref()).required(true);
+                    (meta, Box::new(s1), Box::new(s2))
+                },
+                ConfigLayer::EnvVars { prefix, separator } => {
+                    let meta = SourceMetadata {
+                        id: format!("env_vars:{}", prefix),
+                        source_type: SourceType::Environment,
+                        path: None,
+                        scope: Some(crate::scope::ConfigScope::Runtime),
+                    };
+                    let s1 = config::Environment::default()
+                        .prefix(prefix)
+                        .separator(separator)
+                        .try_parsing(true);
+                    let s2 = config::Environment::default()
+                        .prefix(prefix)
+                        .separator(separator)
+                        .try_parsing(true);
+                    (meta, Box::new(s1), Box::new(s2))
+                },
+            };
+
+            // 2. Collect for map
+            // We allow collection errors to just mean "no values" for map purposes?
+            // Or fail? Logic in build() fails on missing files, but we handled that above.
+            if let Ok(props) = source_for_map.collect() {
+                for (key, _value) in props {
+                    source_map.insert(key, metadata.clone());
+                }
+            }
+
+            // 3. Add to config
+            // Note: Box<dyn Source> doesn't implement Source directly in some versions,
+            // but Vec<Box<dyn Source>> does.
+            config = config.add_source(vec![source_for_config]);
+        }
+
+        Ok((config, source_map))
     }
 }
 

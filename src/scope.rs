@@ -4,6 +4,7 @@
 //! scopes (preferences, user-global, project-local, data storage, runtime) and utility
 //! functions for discovering configuration files.
 
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 // ============================================================================
@@ -52,7 +53,7 @@ use std::path::{Path, PathBuf};
 /// let mut scope_map = std::collections::HashMap::new();
 /// scope_map.insert(ConfigScope::Preferences, "user prefs");
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ConfigScope {
     /// User application preferences
     ///
