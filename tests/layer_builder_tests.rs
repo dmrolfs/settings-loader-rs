@@ -658,3 +658,202 @@ fn test_layer_builder_with_env_search_missing() {
     let config = config_builder.build().unwrap();
     assert!(config.get_string("app_name").is_err());
 }
+
+/// Test 29: with_path_in_dir discovers YAML file
+#[test]
+fn test_with_path_in_dir_discovers_yaml() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let config_dir = temp_dir.path().join("config");
+    fs::create_dir_all(&config_dir).unwrap();
+
+    // Create application.yaml in config directory
+    let yaml_path = config_dir.join("application.yaml");
+    fs::write(
+        &yaml_path,
+        "app_name: YamlDiscovered\nport: 5000\ndebug: true\ndb:\n  host: yaml.host\n  password: yaml_pass",
+    )
+    .unwrap();
+
+    let builder = LayerBuilder::new().with_path_in_dir(&config_dir, "application");
+
+    let config_builder = builder.build().unwrap();
+    let config = config_builder.build().unwrap();
+    let result: TestConfig = config.try_deserialize().unwrap();
+
+    assert_eq!(result.app_name, "YamlDiscovered");
+    assert_eq!(result.port, 5000);
+    assert_eq!(result.db.host, "yaml.host");
+}
+
+/// Test 30: with_path_in_dir discovers TOML file
+#[test]
+fn test_with_path_in_dir_discovers_toml() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let config_dir = temp_dir.path().join("config");
+    fs::create_dir_all(&config_dir).unwrap();
+
+    // Create application.toml in config directory
+    let toml_path = config_dir.join("application.toml");
+    fs::write(
+        &toml_path,
+        r#"app_name = "TomlDiscovered"
+port = 6000
+debug = false
+[db]
+host = "toml.host"
+password = "toml_pass"
+"#,
+    )
+    .unwrap();
+
+    let builder = LayerBuilder::new().with_path_in_dir(&config_dir, "application");
+
+    let config_builder = builder.build().unwrap();
+    let config = config_builder.build().unwrap();
+    let result: TestConfig = config.try_deserialize().unwrap();
+
+    assert_eq!(result.app_name, "TomlDiscovered");
+    assert_eq!(result.port, 6000);
+    assert_eq!(result.db.host, "toml.host");
+}
+
+/// Test 31: with_path_in_dir discovers JSON file
+#[test]
+fn test_with_path_in_dir_discovers_json() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let config_dir = temp_dir.path().join("config");
+    fs::create_dir_all(&config_dir).unwrap();
+
+    // Create application.json in config directory
+    let json_path = config_dir.join("application.json");
+    fs::write(
+        &json_path,
+        r#"{"app_name":"JsonDiscovered","port":7000,"debug":true,"db":{"host":"json.host","password":"json_pass"}}"#,
+    )
+    .unwrap();
+
+    let builder = LayerBuilder::new().with_path_in_dir(&config_dir, "application");
+
+    let config_builder = builder.build().unwrap();
+    let config = config_builder.build().unwrap();
+    let result: TestConfig = config.try_deserialize().unwrap();
+
+    assert_eq!(result.app_name, "JsonDiscovered");
+    assert_eq!(result.port, 7000);
+    assert_eq!(result.db.host, "json.host");
+}
+
+/// Test 32: with_path_in_dir prefers YAML over other formats when multiple exist
+#[test]
+fn test_with_path_in_dir_format_precedence() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let config_dir = temp_dir.path().join("config");
+    fs::create_dir_all(&config_dir).unwrap();
+
+    // Create multiple formats - YAML should be preferred
+    fs::write(
+        config_dir.join("application.yaml"),
+        "app_name: FromYaml\nport: 1111\ndebug: false\ndb:\n  host: yaml\n  password: pass",
+    )
+    .unwrap();
+    fs::write(
+        config_dir.join("application.toml"),
+        r#"app_name = "FromToml"
+port = 2222
+"#,
+    )
+    .unwrap();
+    fs::write(
+        config_dir.join("application.json"),
+        r#"{"app_name":"FromJson","port":3333}"#,
+    )
+    .unwrap();
+
+    let builder = LayerBuilder::new().with_path_in_dir(&config_dir, "application");
+
+    let config_builder = builder.build().unwrap();
+    let config = config_builder.build().unwrap();
+    let result: TestConfig = config.try_deserialize().unwrap();
+
+    // Should load YAML (first in precedence order)
+    assert_eq!(result.app_name, "FromYaml");
+    assert_eq!(result.port, 1111);
+}
+
+/// Test 33: with_path_in_dir fails if no matching file found
+#[test]
+fn test_with_path_in_dir_no_file_found() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let config_dir = temp_dir.path().join("config");
+    fs::create_dir_all(&config_dir).unwrap();
+
+    // No application.* files exist
+    let builder = LayerBuilder::new().with_path_in_dir(&config_dir, "application");
+
+    let result = builder.build();
+    assert!(result.is_err());
+}
+
+/// Test 34: with_path_in_dir works with relative paths
+#[test]
+fn test_with_path_in_dir_relative_path() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let config_dir = temp_dir.path().join("config");
+    fs::create_dir_all(&config_dir).unwrap();
+
+    fs::write(
+        config_dir.join("settings.yaml"),
+        "app_name: RelativePath\nport: 4444\ndebug: false\ndb:\n  host: relative\n  password: pass",
+    )
+    .unwrap();
+
+    // Change to temp dir to test relative path
+    let original_dir = std::env::current_dir().unwrap();
+    std::env::set_current_dir(&temp_dir).unwrap();
+
+    let builder = LayerBuilder::new().with_path_in_dir("config", "settings");
+
+    let config_builder = builder.build().unwrap();
+    let config = config_builder.build().unwrap();
+    let result: TestConfig = config.try_deserialize().unwrap();
+
+    assert_eq!(result.app_name, "RelativePath");
+    assert_eq!(result.port, 4444);
+
+    // Restore original directory
+    std::env::set_current_dir(original_dir).unwrap();
+}
+
+/// Test 35: with_path_in_dir can be combined with other layers
+#[test]
+fn test_with_path_in_dir_with_other_layers() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let config_dir = temp_dir.path().join("config");
+    fs::create_dir_all(&config_dir).unwrap();
+
+    // Base config in directory
+    fs::write(
+        config_dir.join("base.yaml"),
+        "app_name: BaseApp\nport: 5555\ndebug: false\ndb:\n  host: base.host\n  password: base_pass",
+    )
+    .unwrap();
+
+    // Override config as explicit path
+    let override_path = temp_dir.path().join("override.yaml");
+    fs::write(&override_path, "port: 6666\ndebug: true").unwrap();
+
+    let builder = LayerBuilder::new()
+        .with_path_in_dir(&config_dir, "base")
+        .with_path(&override_path);
+
+    let config_builder = builder.build().unwrap();
+    let config = config_builder.build().unwrap();
+    let result: TestConfig = config.try_deserialize().unwrap();
+
+    // Override should win for port and debug
+    assert_eq!(result.port, 6666);
+    assert!(result.debug);
+    // Base values preserved
+    assert_eq!(result.app_name, "BaseApp");
+    assert_eq!(result.db.host, "base.host");
+}

@@ -75,15 +75,22 @@ use crate::scope::ConfigScope;
 use crate::{Environment, SettingsError};
 use config::Source;
 
-/// Result type for layer resolution, containing metadata and dual sources.
-type LayerResult = Result<
-    (
-        SourceMetadata,
-        Box<dyn Source + Send + Sync>,
-        Box<dyn Source + Send + Sync>,
-    ),
-    SettingsError,
->;
+/// Result of resolving a configuration layer into its components.
+///
+/// Contains metadata for provenance tracking and dual source representations
+/// for both configuration building and provenance tracking.
+#[derive(Debug)]
+struct LayerResolution {
+    /// Metadata describing the source of this layer
+    metadata: SourceMetadata,
+    /// Primary source for building configuration
+    config_source: Box<dyn Source + Send + Sync>,
+    /// Secondary source for provenance tracking
+    provenance_source: Box<dyn Source + Send + Sync>,
+}
+
+/// Result type for layer resolution.
+type LayerResult = Result<LayerResolution, SettingsError>;
 
 /// A builder for constructing a layered configuration.
 type ConfigFile = config::File<config::FileSourceFile, config::FileFormat>;
@@ -176,6 +183,51 @@ impl LayerBuilder {
     /// The file at the path must exist or building will fail.
     pub fn with_path(mut self, path: impl AsRef<std::path::Path>) -> Self {
         self.layers.push(ConfigLayer::Path(path.as_ref().to_path_buf()));
+        self
+    }
+
+    /// Add a path-based configuration layer by discovering the file format.
+    ///
+    /// Searches the specified directory for a file with the given basename and any
+    /// supported extension (yaml, yml, toml, json, ron, hjson, json5). The first
+    /// matching file found (in that order) will be used.
+    ///
+    /// This method performs explicit file discovery rather than delegating to `config-rs`
+    /// because it provides clearer error messages and explicit file selection.
+    ///
+    /// # Arguments
+    ///
+    /// * `dir` - Directory to search in
+    /// * `basename` - Base name of the config file (without extension)
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Searches for ./config/application.{yaml,yml,toml,json,ron,hjson,json5}
+    /// let builder = LayerBuilder::new()
+    ///     .with_path_in_dir("config", "application");
+    /// ```
+    ///
+    /// The file must exist or building will fail.
+    pub fn with_path_in_dir(mut self, dir: impl AsRef<std::path::Path>, basename: impl AsRef<str>) -> Self {
+        let dir = dir.as_ref();
+        let basename = basename.as_ref();
+
+        // Search for file with supported extensions in order of preference
+        let extensions = ["yaml", "yml", "toml", "json", "ron", "hjson", "json5"];
+
+        for ext in &extensions {
+            let path = dir.join(format!("{}.{}", basename, ext));
+            if path.exists() {
+                self.layers.push(ConfigLayer::Path(path));
+                return self;
+            }
+        }
+
+        // If no file found, still add a Path layer - it will fail during build()
+        // This provides better error messages
+        let attempted_path = dir.join(format!("{}.yaml", basename));
+        self.layers.push(ConfigLayer::Path(attempted_path));
         self
     }
 
@@ -313,8 +365,8 @@ impl LayerBuilder {
 
         let layers = std::mem::take(&mut self.layers);
         for (idx, layer) in layers.into_iter().enumerate() {
-            let (_, s1, _) = self.resolve_layer_sources(&layer, idx)?;
-            config = config.add_source(vec![s1]);
+            let resolution = self.resolve_layer_sources(&layer, idx)?;
+            config = config.add_source(vec![resolution.config_source]);
         }
 
         Ok(config)
@@ -329,9 +381,9 @@ impl LayerBuilder {
 
         let layers = std::mem::take(&mut self.layers);
         for (idx, layer) in layers.into_iter().enumerate() {
-            let (metadata, s1, s2) = self.resolve_layer_sources(&layer, idx)?;
-            config = config.add_source(vec![s1]);
-            source_map.insert_layer(metadata, s2.collect()?);
+            let resolution = self.resolve_layer_sources(&layer, idx)?;
+            config = config.add_source(vec![resolution.config_source]);
+            source_map.insert_layer(resolution.metadata, resolution.provenance_source.collect()?);
         }
 
         Ok((config, source_map))
@@ -367,7 +419,11 @@ impl LayerBuilder {
         let meta = SourceMetadata::file(abs_path.to_path_buf(), scope, idx);
         let s1 = ConfigFile::from(abs_path.as_ref()).required(true);
         let s2 = ConfigFile::from(abs_path.as_ref()).required(true);
-        Ok((meta, Box::new(s1), Box::new(s2)))
+        Ok(LayerResolution {
+            metadata: meta,
+            config_source: Box::new(s1),
+            provenance_source: Box::new(s2),
+        })
     }
 
     fn resolve_env_var_layer(&self, var_name: &str, idx: usize) -> LayerResult {
@@ -387,12 +443,20 @@ impl LayerBuilder {
                 }
                 let s1 = ConfigFile::from(abs_path.as_ref()).required(true);
                 let s2 = ConfigFile::from(abs_path.as_ref()).required(true);
-                Ok((meta, Box::new(s1), Box::new(s2)))
+                Ok(LayerResolution {
+                    metadata: meta,
+                    config_source: Box::new(s1),
+                    provenance_source: Box::new(s2),
+                })
             },
             Err(_) => {
                 let s1 = config::File::from_str("{}", config::FileFormat::Json);
                 let s2 = config::File::from_str("{}", config::FileFormat::Json);
-                Ok((meta, Box::new(s1), Box::new(s2)))
+                Ok(LayerResolution {
+                    metadata: meta,
+                    config_source: Box::new(s1),
+                    provenance_source: Box::new(s2),
+                })
             },
         }
     }
@@ -409,7 +473,11 @@ impl LayerBuilder {
                     let meta = SourceMetadata::file(abs_path.to_path_buf(), None, idx);
                     let s1 = ConfigFile::from(abs_path.as_ref()).required(true);
                     let s2 = ConfigFile::from(abs_path.as_ref()).required(true);
-                    return Ok((meta, Box::new(s1), Box::new(s2)));
+                    return Ok(LayerResolution {
+                        metadata: meta,
+                        config_source: Box::new(s1),
+                        provenance_source: Box::new(s2),
+                    });
                 }
             }
         }
@@ -421,7 +489,11 @@ impl LayerBuilder {
         };
         let s1 = config::File::from_str("{}", config::FileFormat::Json);
         let s2 = config::File::from_str("{}", config::FileFormat::Json);
-        Ok((meta, Box::new(s1), Box::new(s2)))
+        Ok(LayerResolution {
+            metadata: meta,
+            config_source: Box::new(s1),
+            provenance_source: Box::new(s2),
+        })
     }
 
     fn resolve_secrets_layer(&self, path: &Path, idx: usize) -> LayerResult {
@@ -439,7 +511,11 @@ impl LayerBuilder {
         };
         let s1 = ConfigFile::from(abs_path.as_ref()).required(true);
         let s2 = ConfigFile::from(abs_path.as_ref()).required(true);
-        Ok((meta, Box::new(s1), Box::new(s2)))
+        Ok(LayerResolution {
+            metadata: meta,
+            config_source: Box::new(s1),
+            provenance_source: Box::new(s2),
+        })
     }
 
     fn resolve_env_vars_layer(&self, prefix: &str, separator: &str, idx: usize) -> LayerResult {
@@ -455,7 +531,11 @@ impl LayerBuilder {
             .prefix(prefix)
             .separator(separator)
             .try_parsing(true);
-        Ok((meta, Box::new(s1), Box::new(s2)))
+        Ok(LayerResolution {
+            metadata: meta,
+            config_source: Box::new(s1),
+            provenance_source: Box::new(s2),
+        })
     }
 }
 
