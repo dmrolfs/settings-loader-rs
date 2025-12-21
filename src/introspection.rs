@@ -1256,4 +1256,436 @@ mod tests {
         assert!(keys.contains(&"api_url".to_string()));
         assert!(keys.contains(&"api_key".to_string()));
     }
+
+    // ========================================================================
+    // ADDITIONAL COVERAGE TESTS
+    // ========================================================================
+
+    /// Test search_settings_by_description
+    #[test]
+    fn test_search_settings_by_description() {
+        let settings = TestSettings;
+        let results = settings.search_settings_by_description("endpoint");
+
+        // api_url description contains "endpoint"
+        assert!(!results.is_empty());
+        assert!(results.iter().any(|s| s.key == "api_url"));
+    }
+
+    /// Test search_settings_by_description with empty query
+    #[test]
+    fn test_search_settings_by_description_empty_query() {
+        let settings = TestSettings;
+        let results = settings.search_settings_by_description("");
+
+        assert!(results.is_empty());
+    }
+
+    /// Test search_settings_by_description with no matches
+    #[test]
+    fn test_search_settings_by_description_no_matches() {
+        let settings = TestSettings;
+        let results = settings.search_settings_by_description("nonexistent_description");
+
+        assert!(results.is_empty());
+    }
+
+    /// Test search_settings_by_description case insensitivity
+    #[test]
+    fn test_search_settings_by_description_case_insensitive() {
+        let settings = TestSettings;
+        let results = settings.search_settings_by_description("ENDPOINT");
+
+        // Should find api_url even with uppercase query
+        assert!(!results.is_empty());
+        assert!(results.iter().any(|s| s.key == "api_url"));
+    }
+
+    /// Test groups() method
+    #[test]
+    fn test_get_groups() {
+        let settings = NestedTestSettings;
+        let groups = settings.groups();
+
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].name, "database");
+        assert_eq!(groups[0].label, "Database Settings");
+    }
+
+    /// Test groups() on schema with no groups
+    #[test]
+    fn test_get_groups_empty() {
+        let settings = TestSettings;
+        let groups = settings.groups();
+
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].name, "api");
+    }
+
+    /// Test unconstrained_settings()
+    #[test]
+    fn test_get_unconstrained_settings() {
+        let settings = LargeTestSettings { count: 50 };
+        let unconstrained = settings.unconstrained_settings();
+
+        // Most settings should be unconstrained (only every 5th has Required)
+        assert!(!unconstrained.is_empty());
+        for setting in unconstrained {
+            assert!(setting.constraints.is_empty());
+        }
+    }
+
+    /// Test settings_with_multiple_constraints()
+    #[test]
+    fn test_settings_with_multiple_constraints() {
+        let settings = LargeTestSettings { count: 50 };
+        let multiple = settings.settings_with_multiple_constraints();
+
+        // Some settings should have multiple constraints
+        for setting in multiple {
+            assert!(setting.constraints.len() > 1);
+        }
+    }
+
+    /// Test settings_without_defaults()
+    #[test]
+    fn test_settings_without_defaults() {
+        let settings = LargeTestSettings { count: 20 };
+        let without_defaults = settings.settings_without_defaults();
+
+        // Every other setting lacks a default
+        assert!(!without_defaults.is_empty());
+        for setting in without_defaults {
+            assert!(setting.default.is_none());
+        }
+    }
+
+    /// Test default_value() for existing setting with default
+    #[test]
+    fn test_default_value_exists() {
+        let settings = TestSettings;
+        let default = settings.default_value("api_url");
+
+        assert!(default.is_some());
+        assert_eq!(default.unwrap(), json!("http://localhost:8080"));
+    }
+
+    /// Test default_value() for non-existent setting
+    #[test]
+    fn test_default_value_not_found() {
+        let settings = TestSettings;
+        let default = settings.default_value("nonexistent");
+
+        assert!(default.is_none());
+    }
+
+    /// Test default_value() for setting without default
+    #[test]
+    fn test_default_value_no_default() {
+        let settings = LargeTestSettings { count: 20 };
+        // Even-indexed settings (0, 2, 4, ...) have defaults, odd-indexed don't
+        let default = settings.default_value("setting_1");
+
+        assert!(default.is_none());
+    }
+
+    /// Test validate_setting() with existing setting
+    #[test]
+    fn test_validate_setting_exists() {
+        let settings = TestSettings;
+        assert!(settings.validate_setting("api_url"));
+    }
+
+    /// Test validate_setting() with non-existent setting
+    #[test]
+    fn test_validate_setting_not_exists() {
+        let settings = TestSettings;
+        assert!(!settings.validate_setting("nonexistent"));
+    }
+
+    /// Test validate_setting_type() with matching type
+    #[test]
+    fn test_validate_setting_type_matches() {
+        let settings = TestSettings;
+        let type_match = SettingType::Url {
+            schemes: vec!["http".to_string(), "https".to_string()],
+        };
+
+        assert!(settings.validate_setting_type("api_url", &type_match));
+    }
+
+    /// Test validate_setting_type() with non-matching type
+    #[test]
+    fn test_validate_setting_type_mismatch() {
+        let settings = TestSettings;
+        let wrong_type = SettingType::String { pattern: None, min_length: None, max_length: None };
+
+        assert!(!settings.validate_setting_type("api_url", &wrong_type));
+    }
+
+    /// Test validate_setting_type() with non-existent setting
+    #[test]
+    fn test_validate_setting_type_not_found() {
+        let settings = TestSettings;
+        let type_check = SettingType::String { pattern: None, min_length: None, max_length: None };
+
+        assert!(!settings.validate_setting_type("nonexistent", &type_check));
+    }
+
+    /// Test constraint_statistics() distribution
+    #[test]
+    fn test_constraint_statistics_distribution() {
+        let settings = LargeTestSettings { count: 50 };
+        let stats = settings.constraint_statistics();
+
+        assert!(!stats.is_empty());
+        // Every 5th setting has Required constraint = 10 total
+        assert_eq!(stats.get("required"), Some(&10));
+    }
+
+    /// Test type_distribution() completeness
+    #[test]
+    fn test_type_distribution_all_types() {
+        let settings = LargeTestSettings { count: 50 };
+        let distribution = settings.type_distribution();
+
+        // All settings are String type in this test
+        assert_eq!(distribution.len(), 1);
+        assert_eq!(distribution.get("string"), Some(&50));
+    }
+
+    /// Test visibility_distribution() balance
+    #[test]
+    fn test_visibility_distribution_balance() {
+        let settings = LargeTestSettings { count: 100 };
+        let distribution = settings.visibility_distribution();
+
+        // Should have all 4 visibility levels
+        assert_eq!(distribution.len(), 4);
+        assert!(distribution.contains_key("public"));
+        assert!(distribution.contains_key("hidden"));
+        assert!(distribution.contains_key("secret"));
+        assert!(distribution.contains_key("advanced"));
+    }
+
+    /// Test settings_of_type() with multiple type variants
+    #[test]
+    fn test_settings_of_type_string_variant() {
+        let settings = LargeTestSettings { count: 50 };
+        let string_type = SettingType::String { pattern: None, min_length: None, max_length: None };
+
+        let string_settings = settings.settings_of_type(&string_type);
+        assert!(!string_settings.is_empty());
+        assert_eq!(string_settings.len(), 50);
+    }
+
+    /// Test settings_in_group() with non-existent group
+    #[test]
+    fn test_settings_in_group_nonexistent() {
+        let settings = TestSettings;
+        let results = settings.settings_in_group("nonexistent_group");
+
+        assert!(results.is_empty());
+    }
+
+    /// Test settings_in_group() with exact match on LargeTestSettings
+    #[test]
+    fn test_settings_in_group_exact_match() {
+        let settings = LargeTestSettings { count: 30 };
+        let results = settings.settings_in_group("group_a");
+
+        assert!(!results.is_empty());
+        // group_a should contain settings where i % 3 == 0
+        for setting in &results {
+            assert!(setting.group.as_ref() == Some(&"group_a".to_string()));
+        }
+    }
+
+    /// Test search_settings with partial key match
+    #[test]
+    fn test_search_settings_partial_key() {
+        let settings = TestSettings;
+        let results = settings.search_settings("api");
+
+        // Both api_url and api_key contain "api"
+        assert_eq!(results.len(), 2);
+    }
+
+    /// Test search_settings with label match
+    #[test]
+    fn test_search_settings_label_match() {
+        let settings = TestSettings;
+        let results = settings.search_settings("key");
+
+        // api_key has "key" in its label
+        assert!(!results.is_empty());
+        assert!(results.iter().any(|s| s.key == "api_key"));
+    }
+
+    /// Test search_settings case insensitivity
+    #[test]
+    fn test_search_settings_case_insensitive() {
+        let settings = TestSettings;
+        let results = settings.search_settings("API");
+
+        // Should find settings even with uppercase query
+        assert!(!results.is_empty());
+    }
+
+    /// Test ConfigSchema direct implementation
+    #[test]
+    fn test_config_schema_introspection() {
+        let schema = ConfigSchema {
+            name: "test".to_string(),
+            version: "1.0".to_string(),
+            settings: vec![create_simple_metadata()],
+            groups: vec![],
+        };
+
+        let introspector: Box<dyn SettingsIntrospection> = Box::new(schema.clone());
+        let retrieved_schema = introspector.schema();
+
+        assert_eq!(retrieved_schema.name, schema.name);
+        assert_eq!(retrieved_schema.version, schema.version);
+    }
+
+    /// Test setting_metadata() consistency
+    #[test]
+    fn test_setting_metadata_consistency_across_calls() {
+        let settings = TestSettings;
+
+        let meta1 = settings.setting_metadata("api_url");
+        let meta2 = settings.setting_metadata("api_url");
+
+        assert_eq!(meta1, meta2);
+    }
+
+    /// Test schema() consistency
+    #[test]
+    fn test_schema_consistency_across_calls() {
+        let settings = TestSettings;
+
+        let schema1 = settings.schema();
+        let schema2 = settings.schema();
+
+        assert_eq!(schema1.name, schema2.name);
+        assert_eq!(schema1.settings.len(), schema2.settings.len());
+    }
+
+    /// Test groups() with single group
+    #[test]
+    fn test_groups_single_group() {
+        let settings = NestedTestSettings;
+        let groups = settings.groups();
+
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].name, "database");
+        assert_eq!(groups[0].settings.len(), 3);
+    }
+
+    /// Test public_settings() filters correctly
+    #[test]
+    fn test_public_settings_filtering() {
+        let settings = LargeTestSettings { count: 40 };
+        let public = settings.public_settings();
+
+        // With 40 settings and 4-way visibility, expect ~10 public
+        assert!(!public.is_empty());
+        for setting in public {
+            assert_eq!(setting.visibility, Visibility::Public);
+        }
+    }
+
+    /// Test that all methods handle empty schema gracefully
+    #[test]
+    fn test_all_methods_handle_empty_schema() {
+        let settings = EmptyTestSettings;
+
+        assert_eq!(settings.settings_count(), 0);
+        assert!(settings.public_settings().is_empty());
+        assert!(settings.hidden_settings().is_empty());
+        assert!(settings.secret_settings().is_empty());
+        assert!(settings.advanced_settings().is_empty());
+        assert!(settings.settings_with_defaults().is_empty());
+        assert!(settings.settings_without_defaults().is_empty());
+        assert!(settings.unconstrained_settings().is_empty());
+        assert!(settings.settings_with_multiple_constraints().is_empty());
+        assert!(settings.groups().is_empty());
+        assert_eq!(settings.visibility_distribution().len(), 0);
+        assert_eq!(settings.type_distribution().len(), 0);
+        assert_eq!(settings.constraint_statistics().len(), 0);
+    }
+
+    /// Test validate_setting_value with array type
+    #[test]
+    fn test_validate_setting_value_array_type() {
+        let metadata = SettingMetadata {
+            key: "tags".to_string(),
+            label: "Tags".to_string(),
+            description: "List of tags".to_string(),
+            setting_type: SettingType::Array {
+                element_type: Box::new(SettingType::String { pattern: None, min_length: None, max_length: None }),
+                min_items: Some(1),
+                max_items: Some(10),
+            },
+            default: None,
+            constraints: vec![],
+            visibility: Visibility::Public,
+            group: None,
+        };
+
+        let schema = ConfigSchema {
+            name: "test".to_string(),
+            version: "1.0".to_string(),
+            settings: vec![metadata],
+            groups: vec![],
+        };
+
+        let result = schema.validate_setting_value("tags", &json!(["tag1", "tag2"]));
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_valid());
+    }
+
+    /// Test large schema with multiple visibility types
+    #[test]
+    fn test_large_schema_visibility_coverage() {
+        let settings = LargeTestSettings { count: 100 };
+        let distribution = settings.visibility_distribution();
+
+        // All 4 visibility types should be represented
+        for visibility_type in &["public", "hidden", "secret", "advanced"] {
+            assert!(
+                distribution.contains_key(*visibility_type),
+                "Missing visibility: {}",
+                visibility_type
+            );
+        }
+    }
+
+    /// Test setting_metadata with special characters
+    #[test]
+    fn test_setting_metadata_with_dots_in_key() {
+        let settings = NestedTestSettings;
+        // NestedTestSettings only has top-level "database" setting
+        // The nested fields are in the Object type, not direct settings
+        let metadata = settings.setting_metadata("database");
+
+        assert!(metadata.is_some());
+        assert_eq!(metadata.unwrap().key, "database");
+    }
+
+    /// Test settings_with_constraint with multiple matches
+    #[test]
+    fn test_settings_with_constraint_multiple_matches() {
+        let settings = LargeTestSettings { count: 50 };
+        let constraint = Constraint::Required;
+        let matches = settings.settings_with_constraint(&constraint);
+
+        // Every 5th setting (indices 0, 5, 10, ..., 45) has Required = 10 total
+        assert!(!matches.is_empty());
+        assert_eq!(matches.len(), 10);
+        for setting in matches {
+            assert!(setting.constraints.contains(&constraint));
+        }
+    }
 }

@@ -902,6 +902,7 @@ impl fmt::Display for ValidationResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use assert_matches2::assert_matches;
 
     #[test]
     fn validation_error_missing_required_display() {
@@ -1044,5 +1045,756 @@ mod tests {
         let msg = result.to_string();
         assert!(msg.contains("Validation failed"));
         assert!(msg.contains("1 error"));
+    }
+    #[test]
+    fn test_constraint_validate_length_array() {
+        let constraint = Constraint::Length { min: 2, max: 4 };
+        let arr = serde_json::json!([1, 2, 3]);
+        assert!(constraint.validate("test", &arr).is_ok());
+
+        let short_arr = serde_json::json!([1]);
+        assert_matches!(
+            constraint.validate("test", &short_arr),
+            Err(ValidationError::TooShort { .. })
+        );
+
+        let long_arr = serde_json::json!([1, 2, 3, 4, 5]);
+        assert_matches!(
+            constraint.validate("test", &long_arr),
+            Err(ValidationError::TooLong { .. })
+        );
+    }
+
+    #[test]
+    fn test_constraint_validate_length_invalid_type() {
+        let constraint = Constraint::Length { min: 1, max: 5 };
+        let num = serde_json::json!(10);
+        assert_matches!(
+            constraint.validate("test", &num),
+            Err(ValidationError::TypeMismatch { .. })
+        );
+    }
+
+    // ========================================================================
+    // NEW COMPREHENSIVE VALIDATION TESTS
+    // ========================================================================
+
+    // ValidationError::key() tests
+    #[test]
+    fn test_validation_error_key_all_variants() {
+        assert_eq!(
+            ValidationError::ConstraintViolation {
+                key: "key1".to_string(),
+                reason: "test".to_string()
+            }
+            .key(),
+            Some("key1")
+        );
+
+        assert_eq!(
+            ValidationError::TypeMismatch {
+                key: "key2".to_string(),
+                expected: "string".to_string(),
+                actual: "number".to_string()
+            }
+            .key(),
+            Some("key2")
+        );
+
+        assert_eq!(
+            ValidationError::MissingRequired { key: "key3".to_string() }.key(),
+            Some("key3")
+        );
+
+        assert_eq!(
+            ValidationError::InvalidPattern {
+                key: "key4".to_string(),
+                pattern: ".*".to_string(),
+                value: "test".to_string()
+            }
+            .key(),
+            Some("key4")
+        );
+
+        assert_eq!(
+            ValidationError::OutOfRange {
+                key: "key5".to_string(),
+                min: 0.0,
+                max: 100.0,
+                value: 150.0
+            }
+            .key(),
+            Some("key5")
+        );
+
+        assert_eq!(
+            ValidationError::TooShort { key: "key6".to_string(), min: 5, length: 3 }.key(),
+            Some("key6")
+        );
+
+        assert_eq!(
+            ValidationError::TooLong { key: "key7".to_string(), max: 10, length: 15 }.key(),
+            Some("key7")
+        );
+
+        assert_eq!(
+            ValidationError::NotOneOf {
+                key: "key8".to_string(),
+                expected: vec!["a".to_string()],
+                actual: "b".to_string()
+            }
+            .key(),
+            Some("key8")
+        );
+
+        assert_eq!(
+            ValidationError::CustomValidation {
+                key: "key9".to_string(),
+                message: "custom".to_string()
+            }
+            .key(),
+            Some("key9")
+        );
+
+        assert_eq!(
+            ValidationError::Multiple(vec![ValidationError::MissingRequired { key: "key10".to_string() }]).key(),
+            None
+        );
+    }
+
+    #[test]
+    fn test_validation_error_flatten_nested_multiple() {
+        let error = ValidationError::Multiple(vec![
+            ValidationError::MissingRequired { key: "key1".to_string() },
+            ValidationError::Multiple(vec![
+                ValidationError::OutOfRange {
+                    key: "key2".to_string(),
+                    min: 0.0,
+                    max: 100.0,
+                    value: 150.0,
+                },
+                ValidationError::TooShort { key: "key3".to_string(), min: 5, length: 2 },
+            ]),
+        ]);
+
+        let flattened = error.flatten();
+        assert_eq!(flattened.len(), 3);
+    }
+
+    #[test]
+    fn test_validation_error_redact_if_secret_public_visibility() {
+        let error = ValidationError::InvalidPattern {
+            key: "username".to_string(),
+            pattern: "[a-z]+".to_string(),
+            value: "Invalid123".to_string(),
+        };
+
+        let redacted = error.redact_if_secret(Visibility::Public);
+        match redacted {
+            ValidationError::InvalidPattern { value, .. } => {
+                assert_eq!(value, "Invalid123"); // Not redacted for public
+            },
+            _ => panic!("Expected InvalidPattern"),
+        }
+    }
+
+    #[test]
+    fn test_validation_error_redact_if_secret_hidden_visibility() {
+        let error = ValidationError::InvalidPattern {
+            key: "api_key".to_string(),
+            pattern: "[0-9]+".to_string(),
+            value: "sk-abc123xyz".to_string(),
+        };
+
+        let redacted = error.redact_if_secret(Visibility::Hidden);
+        match redacted {
+            ValidationError::InvalidPattern { value, .. } => {
+                assert_eq!(value, "[REDACTED:api_key]");
+            },
+            _ => panic!("Expected InvalidPattern"),
+        }
+    }
+
+    #[test]
+    fn test_validation_error_redact_if_secret_secret_visibility() {
+        let error = ValidationError::NotOneOf {
+            key: "token".to_string(),
+            expected: vec!["valid1".to_string(), "valid2".to_string()],
+            actual: "secret_value_xyz".to_string(),
+        };
+
+        let redacted = error.redact_if_secret(Visibility::Secret);
+        match redacted {
+            ValidationError::NotOneOf { actual, .. } => {
+                assert_eq!(actual, "[REDACTED:token]");
+            },
+            _ => panic!("Expected NotOneOf"),
+        }
+    }
+
+    #[test]
+    fn test_validation_error_redact_out_of_range() {
+        let error = ValidationError::OutOfRange {
+            key: "password_hash".to_string(),
+            min: 0.0,
+            max: 100.0,
+            value: 150.0,
+        };
+
+        let redacted = error.redact_if_secret(Visibility::Secret);
+        match redacted {
+            ValidationError::OutOfRange { value, .. } => {
+                assert!(value.is_nan()); // NaN sentinel for redaction
+            },
+            _ => panic!("Expected OutOfRange"),
+        }
+    }
+
+    #[test]
+    fn test_validation_error_display_constraint_violation() {
+        let error = ValidationError::ConstraintViolation {
+            key: "test".to_string(),
+            reason: "invalid value".to_string(),
+        };
+        assert_eq!(error.to_string(), "test: invalid value");
+    }
+
+    #[test]
+    fn test_validation_error_display_type_mismatch() {
+        let error = ValidationError::TypeMismatch {
+            key: "port".to_string(),
+            expected: "integer".to_string(),
+            actual: "string".to_string(),
+        };
+        let msg = error.to_string();
+        assert!(msg.contains("port"));
+        assert!(msg.contains("type mismatch"));
+        assert!(msg.contains("integer"));
+        assert!(msg.contains("string"));
+    }
+
+    #[test]
+    fn test_validation_error_display_too_short() {
+        let error = ValidationError::TooShort { key: "password".to_string(), min: 8, length: 5 };
+        let msg = error.to_string();
+        assert!(msg.contains("password"));
+        assert!(msg.contains("5"));
+        assert!(msg.contains("8"));
+    }
+
+    #[test]
+    fn test_validation_error_display_too_long() {
+        let error = ValidationError::TooLong { key: "name".to_string(), max: 50, length: 100 };
+        let msg = error.to_string();
+        assert!(msg.contains("name"));
+        assert!(msg.contains("100"));
+        assert!(msg.contains("50"));
+    }
+
+    #[test]
+    fn test_validation_error_display_custom_validation() {
+        let error = ValidationError::CustomValidation {
+            key: "custom_field".to_string(),
+            message: "failed custom check".to_string(),
+        };
+        assert_eq!(error.to_string(), "custom_field: failed custom check");
+    }
+
+    #[test]
+    fn test_validation_error_display_multiple() {
+        let error = ValidationError::Multiple(vec![
+            ValidationError::MissingRequired { key: "key1".to_string() },
+            ValidationError::OutOfRange {
+                key: "key2".to_string(),
+                min: 0.0,
+                max: 100.0,
+                value: 150.0,
+            },
+        ]);
+        let msg = error.to_string();
+        assert!(msg.contains("Multiple validation errors"));
+        assert!(msg.contains("1."));
+        assert!(msg.contains("2."));
+    }
+
+    // Constraint::validate tests for all variants
+    #[test]
+    fn test_constraint_pattern_valid() {
+        let constraint = Constraint::Pattern("[a-z]+".to_string());
+        let value = serde_json::json!("abc");
+        assert!(constraint.validate("test", &value).is_ok());
+    }
+
+    #[test]
+    fn test_constraint_pattern_invalid() {
+        let constraint = Constraint::Pattern("[0-9]+".to_string());
+        let value = serde_json::json!("abc");
+        assert_matches!(
+            constraint.validate("test", &value),
+            Err(ValidationError::InvalidPattern { .. })
+        );
+    }
+
+    #[test]
+    fn test_constraint_pattern_invalid_regex() {
+        let constraint = Constraint::Pattern("[invalid(".to_string());
+        let value = serde_json::json!("test");
+        assert_matches!(
+            constraint.validate("test", &value),
+            Err(ValidationError::ConstraintViolation { .. })
+        );
+    }
+
+    #[test]
+    fn test_constraint_range_valid() {
+        let constraint = Constraint::Range { min: 1.0, max: 100.0 };
+        assert!(constraint.validate("test", &serde_json::json!(50)).is_ok());
+        assert!(constraint.validate("test", &serde_json::json!(1)).is_ok());
+        assert!(constraint.validate("test", &serde_json::json!(100)).is_ok());
+    }
+
+    #[test]
+    fn test_constraint_range_out_of_bounds() {
+        let constraint = Constraint::Range { min: 1.0, max: 100.0 };
+        assert_matches!(
+            constraint.validate("test", &serde_json::json!(0)),
+            Err(ValidationError::OutOfRange { .. })
+        );
+        assert_matches!(
+            constraint.validate("test", &serde_json::json!(101)),
+            Err(ValidationError::OutOfRange { .. })
+        );
+    }
+
+    #[test]
+    fn test_constraint_required_valid() {
+        let constraint = Constraint::Required;
+        assert!(constraint.validate("test", &serde_json::json!("value")).is_ok());
+        assert!(constraint.validate("test", &serde_json::json!(0)).is_ok());
+        assert!(constraint.validate("test", &serde_json::json!(false)).is_ok());
+    }
+
+    #[test]
+    fn test_constraint_required_null() {
+        let constraint = Constraint::Required;
+        assert_matches!(
+            constraint.validate("test", &serde_json::json!(null)),
+            Err(ValidationError::MissingRequired { .. })
+        );
+    }
+
+    #[test]
+    fn test_constraint_one_of_valid() {
+        let constraint = Constraint::OneOf(vec!["a".to_string(), "b".to_string(), "c".to_string()]);
+        assert!(constraint.validate("test", &serde_json::json!("a")).is_ok());
+        assert!(constraint.validate("test", &serde_json::json!("b")).is_ok());
+    }
+
+    #[test]
+    fn test_constraint_one_of_invalid() {
+        let constraint = Constraint::OneOf(vec!["a".to_string(), "b".to_string()]);
+        assert_matches!(
+            constraint.validate("test", &serde_json::json!("c")),
+            Err(ValidationError::NotOneOf { .. })
+        );
+    }
+
+    #[test]
+    fn test_constraint_custom_passes_through() {
+        let constraint = Constraint::Custom("application_defined".to_string());
+        assert!(constraint.validate("test", &serde_json::json!(null)).is_ok());
+        assert!(constraint.validate("test", &serde_json::json!("anything")).is_ok());
+    }
+
+    // SettingType::validate tests
+    #[test]
+    fn test_setting_type_string_valid() {
+        let st = SettingType::String { pattern: None, min_length: None, max_length: None };
+        assert!(st.validate("test", &serde_json::json!("value")).is_ok());
+    }
+
+    #[test]
+    fn test_setting_type_string_with_pattern_valid() {
+        let st = SettingType::String {
+            pattern: Some("[a-z]+".to_string()),
+            min_length: None,
+            max_length: None,
+        };
+        assert!(st.validate("test", &serde_json::json!("abc")).is_ok());
+    }
+
+    #[test]
+    fn test_setting_type_string_with_pattern_invalid() {
+        let st = SettingType::String {
+            pattern: Some("[0-9]+".to_string()),
+            min_length: None,
+            max_length: None,
+        };
+        assert!(st.validate("test", &serde_json::json!("abc")).is_err());
+    }
+
+    #[test]
+    fn test_setting_type_string_with_length_bounds() {
+        let st = SettingType::String {
+            pattern: None,
+            min_length: Some(3),
+            max_length: Some(10),
+        };
+        assert!(st.validate("test", &serde_json::json!("abc")).is_ok());
+        assert!(st.validate("test", &serde_json::json!("ab")).is_err());
+        assert!(st.validate("test", &serde_json::json!("abcdefghijk")).is_err());
+    }
+
+    #[test]
+    fn test_setting_type_integer_valid() {
+        let st = SettingType::Integer { min: None, max: None };
+        assert!(st.validate("test", &serde_json::json!(42)).is_ok());
+        assert!(st.validate("test", &serde_json::json!(-100)).is_ok());
+    }
+
+    #[test]
+    fn test_setting_type_integer_with_bounds() {
+        let st = SettingType::Integer { min: Some(0), max: Some(100) };
+        assert!(st.validate("test", &serde_json::json!(50)).is_ok());
+        assert!(st.validate("test", &serde_json::json!(-1)).is_err());
+        assert!(st.validate("test", &serde_json::json!(101)).is_err());
+    }
+
+    #[test]
+    fn test_setting_type_integer_rejects_string() {
+        let st = SettingType::Integer { min: None, max: None };
+        assert!(st.validate("test", &serde_json::json!("42")).is_err());
+    }
+
+    #[test]
+    fn test_setting_type_float_valid() {
+        let st = SettingType::Float { min: None, max: None };
+        assert!(st.validate("test", &serde_json::json!(3.14)).is_ok());
+        assert!(st.validate("test", &serde_json::json!(42)).is_ok()); // Integer coerced to float
+    }
+
+    #[test]
+    fn test_setting_type_float_with_bounds() {
+        let st = SettingType::Float { min: Some(0.0), max: Some(1.0) };
+        assert!(st.validate("test", &serde_json::json!(0.5)).is_ok());
+        assert!(st.validate("test", &serde_json::json!(-0.1)).is_err());
+        assert!(st.validate("test", &serde_json::json!(1.1)).is_err());
+    }
+
+    #[test]
+    fn test_setting_type_boolean_valid() {
+        let st = SettingType::Boolean;
+        assert!(st.validate("test", &serde_json::json!(true)).is_ok());
+        assert!(st.validate("test", &serde_json::json!(false)).is_ok());
+    }
+
+    #[test]
+    fn test_setting_type_boolean_rejects_other_types() {
+        let st = SettingType::Boolean;
+        assert!(st.validate("test", &serde_json::json!(1)).is_err());
+        assert!(st.validate("test", &serde_json::json!("true")).is_err());
+    }
+
+    #[test]
+    fn test_setting_type_enum_valid() {
+        let st = SettingType::Enum {
+            variants: vec!["dev".to_string(), "staging".to_string(), "prod".to_string()],
+        };
+        assert!(st.validate("env", &serde_json::json!("dev")).is_ok());
+        assert!(st.validate("env", &serde_json::json!("prod")).is_ok());
+    }
+
+    #[test]
+    fn test_setting_type_enum_invalid() {
+        let st = SettingType::Enum {
+            variants: vec!["dev".to_string(), "staging".to_string()],
+        };
+        assert!(st.validate("env", &serde_json::json!("invalid")).is_err());
+    }
+
+    #[test]
+    fn test_setting_type_secret_valid() {
+        let st = SettingType::Secret;
+        assert!(st.validate("password", &serde_json::json!("any_value")).is_ok());
+        assert!(st.validate("password", &serde_json::json!(123)).is_ok());
+    }
+
+    #[test]
+    fn test_setting_type_secret_rejects_null() {
+        let st = SettingType::Secret;
+        assert!(st.validate("password", &serde_json::json!(null)).is_err());
+    }
+
+    #[test]
+    fn test_setting_type_any_accepts_anything() {
+        let st = SettingType::Any;
+        assert!(st.validate("test", &serde_json::json!(null)).is_ok());
+        assert!(st.validate("test", &serde_json::json!("string")).is_ok());
+        assert!(st.validate("test", &serde_json::json!(42)).is_ok());
+        assert!(st.validate("test", &serde_json::json!([1, 2, 3])).is_ok());
+    }
+
+    #[test]
+    fn test_setting_type_array_valid() {
+        let st = SettingType::Array {
+            element_type: Box::new(SettingType::Integer { min: None, max: None }),
+            min_items: None,
+            max_items: None,
+        };
+        assert!(st.validate("test", &serde_json::json!([1, 2, 3])).is_ok());
+        assert!(st.validate("test", &serde_json::json!([])).is_ok());
+    }
+
+    #[test]
+    fn test_setting_type_array_with_bounds() {
+        let st = SettingType::Array {
+            element_type: Box::new(SettingType::Integer { min: None, max: None }),
+            min_items: Some(1),
+            max_items: Some(3),
+        };
+        assert!(st.validate("test", &serde_json::json!([1])).is_ok());
+        assert!(st.validate("test", &serde_json::json!([])).is_err());
+        assert!(st.validate("test", &serde_json::json!([1, 2, 3, 4])).is_err());
+    }
+
+    #[test]
+    fn test_setting_type_array_invalid_element_type() {
+        let st = SettingType::Array {
+            element_type: Box::new(SettingType::Integer { min: None, max: None }),
+            min_items: None,
+            max_items: None,
+        };
+        assert!(st.validate("test", &serde_json::json!(["string"])).is_err());
+    }
+
+    #[test]
+    fn test_setting_type_object_valid() {
+        let field = SettingMetadata {
+            key: "name".to_string(),
+            label: "Name".to_string(),
+            description: "User name".to_string(),
+            setting_type: SettingType::String { pattern: None, min_length: None, max_length: None },
+            default: None,
+            constraints: vec![],
+            visibility: Visibility::Public,
+            group: None,
+        };
+        let st = SettingType::Object { fields: vec![field] };
+        let value = serde_json::json!({ "name": "John" });
+        assert!(st.validate("user", &value).is_ok());
+    }
+
+    #[test]
+    fn test_setting_type_object_rejects_non_object() {
+        let st = SettingType::Object { fields: vec![] };
+        assert!(st.validate("test", &serde_json::json!("not an object")).is_err());
+    }
+
+    #[test]
+    fn test_setting_type_path_valid() {
+        let st = SettingType::Path { must_exist: false, is_directory: false };
+        assert!(st.validate("path", &serde_json::json!("/etc/config")).is_ok());
+    }
+
+    #[test]
+    fn test_setting_type_path_rejects_non_string() {
+        let st = SettingType::Path { must_exist: false, is_directory: false };
+        assert!(st.validate("path", &serde_json::json!(123)).is_err());
+    }
+
+    #[test]
+    fn test_setting_type_url_valid() {
+        let st = SettingType::Url { schemes: vec![] };
+        assert!(st.validate("url", &serde_json::json!("https://example.com")).is_ok());
+    }
+
+    #[test]
+    fn test_setting_type_url_with_scheme_restriction() {
+        let st = SettingType::Url { schemes: vec!["https".to_string()] };
+        assert!(st.validate("url", &serde_json::json!("https://example.com")).is_ok());
+        assert!(st.validate("url", &serde_json::json!("http://example.com")).is_err());
+    }
+
+    #[test]
+    fn test_setting_type_url_missing_scheme() {
+        let st = SettingType::Url { schemes: vec!["https".to_string()] };
+        assert!(st.validate("url", &serde_json::json!("example.com")).is_err());
+    }
+
+    #[test]
+    fn test_setting_type_duration_valid() {
+        let st = SettingType::Duration { min: None, max: None };
+        assert!(st.validate("timeout", &serde_json::json!(60)).is_ok());
+        assert!(st.validate("timeout", &serde_json::json!({})).is_ok());
+    }
+
+    // SettingMetadata::validate and validate_value tests
+    #[test]
+    fn test_setting_metadata_validate_value_with_constraint() {
+        let metadata = SettingMetadata {
+            key: "port".to_string(),
+            label: "Port".to_string(),
+            description: "Server port".to_string(),
+            setting_type: SettingType::Integer { min: Some(1024), max: Some(65535) },
+            default: None,
+            constraints: vec![Constraint::Required],
+            visibility: Visibility::Public,
+            group: None,
+        };
+
+        assert!(metadata.validate_value(&serde_json::json!(8080)).is_ok());
+        assert!(metadata.validate_value(&serde_json::json!(null)).is_err());
+        assert!(metadata.validate_value(&serde_json::json!(70000)).is_err());
+    }
+
+    #[test]
+    fn test_setting_metadata_validate_returns_result() {
+        let metadata = SettingMetadata {
+            key: "api_key".to_string(),
+            label: "API Key".to_string(),
+            description: "Secret API key".to_string(),
+            setting_type: SettingType::String { pattern: None, min_length: None, max_length: None },
+            default: None,
+            constraints: vec![Constraint::Required],
+            visibility: Visibility::Secret,
+            group: None,
+        };
+
+        let result = metadata.validate(&serde_json::json!(null));
+        assert!(!result.is_valid());
+        assert_eq!(result.error_count(), 1);
+    }
+
+    #[test]
+    fn test_validation_result_merge_with_warnings() {
+        let mut result1 = ValidationResult::new();
+        result1.add_warning("Warning 1".to_string());
+
+        let mut result2 = ValidationResult::new();
+        result2.add_warning("Warning 2".to_string());
+        result2.add_error(ValidationError::MissingRequired { key: "test".to_string() });
+
+        result1.merge(result2);
+        assert!(!result1.is_valid());
+        assert_eq!(result1.warning_count(), 2);
+        assert_eq!(result1.error_count(), 1);
+    }
+
+    #[test]
+    fn test_validation_result_into_result_single_error() {
+        let mut result = ValidationResult::new();
+        result.add_error(ValidationError::MissingRequired { key: "test".to_string() });
+
+        match result.into_result() {
+            Err(ValidationError::MissingRequired { key }) => {
+                assert_eq!(key, "test");
+            },
+            _ => panic!("Expected single error"),
+        }
+    }
+
+    #[test]
+    fn test_validation_result_into_result_multiple_errors() {
+        let mut result = ValidationResult::new();
+        result.add_error(ValidationError::MissingRequired { key: "test1".to_string() });
+        result.add_error(ValidationError::OutOfRange {
+            key: "test2".to_string(),
+            min: 0.0,
+            max: 100.0,
+            value: 150.0,
+        });
+
+        match result.into_result() {
+            Err(ValidationError::Multiple(errors)) => {
+                assert_eq!(errors.len(), 2);
+            },
+            _ => panic!("Expected multiple errors"),
+        }
+    }
+
+    #[test]
+    fn test_validation_result_display_with_warnings() {
+        let mut result = ValidationResult::new();
+        result.add_error(ValidationError::MissingRequired { key: "test".to_string() });
+        result.add_warning("Some warning".to_string());
+
+        let msg = result.to_string();
+        assert!(msg.contains("1 error"));
+        assert!(msg.contains("1 warning"));
+    }
+
+    #[test]
+    fn test_json_type_str_helper() {
+        let null_val = serde_json::json!(null);
+        assert_eq!(null_val.type_str(), "null");
+
+        let bool_val = serde_json::json!(true);
+        assert_eq!(bool_val.type_str(), "boolean");
+
+        let num_val = serde_json::json!(42);
+        assert_eq!(num_val.type_str(), "number");
+
+        let str_val = serde_json::json!("text");
+        assert_eq!(str_val.type_str(), "string");
+
+        let arr_val = serde_json::json!([1, 2, 3]);
+        assert_eq!(arr_val.type_str(), "array");
+
+        let obj_val = serde_json::json!({});
+        assert_eq!(obj_val.type_str(), "object");
+    }
+
+    #[test]
+    fn test_constraint_pattern_unicode() {
+        let constraint = Constraint::Pattern("[ñáéíóú]+".to_string());
+        assert!(constraint.validate("test", &serde_json::json!("ñoño")).is_ok());
+        assert!(constraint.validate("test", &serde_json::json!("hello")).is_err());
+    }
+
+    #[test]
+    fn test_setting_type_string_length_with_unicode() {
+        let st = SettingType::String {
+            pattern: None,
+            min_length: Some(2),
+            max_length: Some(4),
+        };
+        // Unicode characters count as single chars in Rust
+        assert!(st.validate("test", &serde_json::json!("ñoño")).is_ok()); // 4 chars
+        assert!(st.validate("test", &serde_json::json!("ñ")).is_err()); // 1 char, too short
+    }
+
+    #[test]
+    fn test_validation_error_display_redacted_out_of_range() {
+        let error = ValidationError::OutOfRange {
+            key: "secret".to_string(),
+            min: 0.0,
+            max: 100.0,
+            value: f64::NAN,
+        };
+        let msg = error.to_string();
+        assert!(msg.contains("[REDACTED:secret]"));
+    }
+
+    #[test]
+    fn test_setting_type_integer_accepts_large_values() {
+        let st = SettingType::Integer { min: None, max: None };
+        // i64 max value is valid
+        assert!(st.validate("test", &serde_json::json!(i64::MAX)).is_ok());
+        // u64::MAX exceeds i64 range and fails in serde_json
+        assert!(st.validate("test", &serde_json::json!(9223372036854775807i64)).is_ok());
+    }
+
+    #[test]
+    fn test_setting_type_float_from_integer() {
+        let st = SettingType::Float { min: None, max: None };
+        assert!(st.validate("test", &serde_json::json!(42)).is_ok());
+    }
+
+    #[test]
+    fn test_constraint_length_with_multibyte_chars() {
+        let constraint = Constraint::Length { min: 1, max: 3 };
+        // String with emoji (counts as 1 char in Rust)
+        assert!(constraint.validate("test", &serde_json::json!("👍👍")).is_ok());
+        // 2 chars
     }
 }

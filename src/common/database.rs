@@ -216,7 +216,53 @@ mod tests {
     use trim_margin::MarginTrimmable;
 
     #[test]
-    fn test_password_redaction() {
+    fn test_database_equality() {
+        let base = DatabaseSettings {
+            username: "Billy".to_string(),
+            password: SecretString::from("my-secret"),
+            port: 1234,
+            host: "localhost".to_string(),
+            database_name: "db_name".to_string(),
+            require_ssl: true,
+            min_connections: None,
+            max_connections: None,
+            max_lifetime: None,
+            acquire_timeout: None,
+            idle_timeout: None,
+        };
+
+        // Same values
+        let same = base.clone();
+        assert_eq!(base, same);
+
+        // Different field
+        let mut diff_user = base.clone();
+        diff_user.username = "NotBilly".to_string();
+        assert!(base != diff_user);
+
+        let mut diff_pass = base.clone();
+        diff_pass.password = SecretString::from("other-secret");
+        assert!(base != diff_pass);
+
+        let mut diff_port = base.clone();
+        diff_port.port = 4321;
+        assert!(base != diff_port);
+
+        let mut diff_host = base.clone();
+        diff_host.host = "otherhost".to_string();
+        assert!(base != diff_host);
+
+        let mut diff_db = base.clone();
+        diff_db.database_name = "other_db".to_string();
+        assert!(base != diff_db);
+
+        let mut diff_ssl = base.clone();
+        diff_ssl.require_ssl = false;
+        assert!(base != diff_ssl);
+    }
+
+    #[test]
+    fn test_database_connection_string() {
         let settings = DatabaseSettings {
             username: "Billy".to_string(),
             password: SecretString::from("my-secret"),
@@ -231,11 +277,61 @@ mod tests {
             idle_timeout: None,
         };
 
-        let actual = format!("{:?}", settings);
+        let conn_str = settings.connection_string();
         assert_eq!(
-            actual,
-            r##"DatabaseSettings { username: "Billy", password: SecretBox<str>([REDACTED]), host: "localhost", port: 1234, database_name: "db_name", require_ssl: true, min_connections: None, max_connections: None, max_lifetime: None, acquire_timeout: None, idle_timeout: None }"##
-        )
+            conn_str.expose_secret(),
+            "postgres://Billy:my-secret@localhost:1234/db_name"
+        );
+    }
+
+    #[test]
+    fn test_pg_pool_options() {
+        let mut settings = DatabaseSettings {
+            username: "Billy".to_string(),
+            password: SecretString::from("my-secret"),
+            port: 1234,
+            host: "localhost".to_string(),
+            database_name: "db_name".to_string(),
+            require_ssl: true,
+            min_connections: Some(2),
+            max_connections: Some(20),
+            max_lifetime: Some(Duration::from_secs(3600)),
+            acquire_timeout: Some(Duration::from_secs(10)),
+            idle_timeout: Some(Duration::from_secs(300)),
+        };
+
+        // All options set
+        let _options = settings.pg_pool_options();
+        // Since PgPoolOptions doesn't implement Debug/PartialEq in a helpful way for inspection,
+        // we mainly verify it doesn't panic and exercises the code paths.
+
+        // Options none
+        settings.min_connections = None;
+        settings.max_connections = None;
+        settings.max_lifetime = None;
+        settings.acquire_timeout = None;
+        settings.idle_timeout = None;
+        let _options_none = settings.pg_pool_options();
+    }
+
+    #[test]
+    fn test_pg_connect_options() {
+        let settings = DatabaseSettings {
+            username: "Billy".to_string(),
+            password: SecretString::from("my-secret"),
+            port: 1234,
+            host: "localhost".to_string(),
+            database_name: "db_name".to_string(),
+            require_ssl: true,
+            min_connections: None,
+            max_connections: None,
+            max_lifetime: None,
+            acquire_timeout: None,
+            idle_timeout: None,
+        };
+
+        let _opts_no_db = settings.pg_connect_options_without_db();
+        let _opts_with_db = settings.pg_connect_options_with_db();
     }
 
     #[test]

@@ -61,11 +61,48 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_editor_error_display() {
-        let err = EditorError::key_not_found("database.host");
-        assert!(err.to_string().contains("Key not found"));
+    fn test_editor_error_io_error() {
+        let io_err = io::Error::new(io::ErrorKind::NotFound, "file not found");
+        let err = EditorError::from(io_err);
+        assert!(err.to_string().contains("IO error"));
+        assert!(err.to_string().contains("file not found"));
+    }
 
-        let err = EditorError::parse_error("invalid TOML");
-        assert!(err.to_string().contains("Parse error"));
+    #[test]
+    fn test_editor_error_parse_error() {
+        let err = EditorError::parse_error("invalid TOML format");
+        assert!(err.to_string().contains("Parse error: invalid TOML format"));
+    }
+
+    #[test]
+    fn test_editor_error_serialization_error() {
+        let err = EditorError::serialization_error("failed to serialize data");
+        assert!(err.to_string().contains("Serialization error: failed to serialize data"));
+    }
+
+    #[test]
+    fn test_editor_error_key_not_found() {
+        let err = EditorError::key_not_found("database.host");
+        assert!(err.to_string().contains("Key not found: database.host"));
+    }
+
+    #[test]
+    fn test_editor_error_format_mismatch() {
+        let err = EditorError::FormatMismatch;
+        assert!(err
+            .to_string()
+            .contains("Format mismatch: expected format differs from file"));
+    }
+
+    #[test]
+    fn test_editor_error_type_mismatch() {
+        let err = EditorError::type_mismatch("integer", "string");
+        assert!(err.to_string().contains("Type mismatch: expected integer, got string"));
+    }
+
+    #[test]
+    fn test_editor_error_invalid_path() {
+        let err = EditorError::InvalidPath("invalid.nested.key".to_string());
+        assert!(err.to_string().contains("Invalid path: invalid.nested.key"));
     }
 }

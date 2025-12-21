@@ -25,9 +25,7 @@ pub struct TomlLayerEditor {
 impl TomlLayerEditor {
     /// Opens an existing TOML file and parses it into a `TomlLayerEditor`.
     pub fn open(path: &Path) -> Result<Self, EditorError> {
-        let content = fs::read_to_string(path)
-            .with_context(|| format!("Failed to read TOML file: {}", path.display()))
-            .map_err(|e| EditorError::IoError(io::Error::other(e.to_string())))?;
+        let content = fs::read_to_string(path).map_err(EditorError::IoError)?;
 
         let document = content
             .parse::<DocumentMut>()
@@ -113,7 +111,7 @@ impl TomlLayerEditor {
         let parts: Vec<&str> = key.split('.').collect();
         let mut doc = self.document.write();
 
-        if parts.is_empty() {
+        if parts.is_empty() || parts.iter().any(|p| p.is_empty()) {
             return Err(EditorError::InvalidPath("Empty key provided for unset".to_string()));
         }
 
@@ -126,8 +124,8 @@ impl TomlLayerEditor {
             match Self::get_item_mut(&mut doc, &parent_path) {
                 Ok(item) => item
                     .as_table_mut()
-                    .ok_or_else(|| EditorError::KeyNotFound(format!("Parent path '{}' is not a table", parent_path)))?,
-                Err(_) => return Err(EditorError::KeyNotFound(parent_path)),
+                    .ok_or_else(|| EditorError::InvalidPath(format!("Parent path '{}' is not a table", parent_path)))?,
+                Err(e) => return Err(e),
             }
         };
 
@@ -214,19 +212,11 @@ impl LayerEditor for TomlLayerEditor {
 
         let content = self.document.read().to_string();
 
-        let mut file = fs::File::create(&temp_path)
-            .with_context(|| format!("Failed to create temporary file: {}", temp_path.display()))
-            .map_err(|e| EditorError::IoError(io::Error::other(e.to_string())))?;
-        file.write_all(content.as_bytes())
-            .with_context(|| format!("Failed to write to temporary file: {}", temp_path.display()))
-            .map_err(|e| EditorError::IoError(io::Error::other(e.to_string())))?;
-        file.sync_all()
-            .with_context(|| format!("Failed to sync temporary file: {}", temp_path.display()))
-            .map_err(|e| EditorError::IoError(io::Error::other(e.to_string())))?;
+        let mut file = fs::File::create(&temp_path).map_err(EditorError::IoError)?;
+        file.write_all(content.as_bytes()).map_err(EditorError::IoError)?;
+        file.sync_all().map_err(EditorError::IoError)?;
 
-        fs::rename(&temp_path, path)
-            .with_context(|| format!("Failed to rename temporary file to: {}", path.display()))
-            .map_err(|e| EditorError::IoError(io::Error::other(e.to_string())))?;
+        fs::rename(&temp_path, path).map_err(EditorError::IoError)?;
 
         *self.dirty.write() = false;
         Ok(())
@@ -392,5 +382,156 @@ mod tests {
         let mut sorted_keys = keys;
         sorted_keys.sort();
         assert_eq!(sorted_keys, vec!["key1", "section1", "section2"]);
+    }
+
+    #[test]
+    fn test_toml_editor_invalid_path() {
+        let file = NamedTempFile::new().unwrap();
+        let path = file.path();
+        fs::write(path, r#"a = "not_a_table""#).unwrap();
+
+        let mut editor = TomlLayerEditor::open(path).unwrap();
+        let res = editor.set("a.b", 123);
+        assert!(res.is_err());
+        if let Err(EditorError::InvalidPath(msg)) = res {
+            assert!(msg.contains("Path segment 'a' is not a table"));
+        } else {
+            panic!("Expected InvalidPath error, got {:?}", res);
+        }
+    }
+
+    #[test]
+    fn test_toml_editor_unset_empty_key() {
+        let file = NamedTempFile::new().unwrap();
+        let path = file.path();
+        fs::write(path, r#"key = "value""#).unwrap();
+
+        let mut editor = TomlLayerEditor::open(path).unwrap();
+        let res = editor.unset("");
+        assert!(res.is_err());
+        if let Err(EditorError::InvalidPath(msg)) = res {
+            assert!(msg.contains("Empty key provided for unset"));
+        } else {
+            panic!("Expected InvalidPath error for empty key, got {:?}", res);
+        }
+    }
+
+    #[test]
+    fn test_toml_editor_unset_parent_not_table() {
+        let file = NamedTempFile::new().unwrap();
+        let path = file.path();
+        fs::write(
+            path,
+            r#"
+            [section]
+            key = "value"
+            non_table = 123
+        "#,
+        )
+        .unwrap();
+
+        let mut editor = TomlLayerEditor::open(path).unwrap();
+        // Attempt to unset a key inside a non-table value
+        let res = editor.unset("section.non_table.nested");
+        assert!(res.is_err());
+        if let Err(EditorError::InvalidPath(msg)) = res {
+            assert!(msg.contains("is not a table"), "Got: {}", msg);
+        } else {
+            panic!("Expected InvalidPath error for non-table parent, got {:?}", res);
+        }
+    }
+
+    #[test]
+    fn test_get_item_mut_intermediate_non_table() {
+        let file = NamedTempFile::new().unwrap();
+        let path = file.path();
+        fs::write(
+            path,
+            r#"
+            [a]
+            b = "string_value"
+        "#,
+        )
+        .unwrap();
+        let mut editor = TomlLayerEditor::open(path).unwrap();
+        // Trying to get a mutable item where 'b' is a string, not a table
+        let res = editor.set("a.b.c", 1);
+        assert!(res.is_err());
+        if let Err(EditorError::InvalidPath(msg)) = res {
+            assert!(msg.contains("Path segment 'b' is not a table"));
+        } else {
+            panic!("Expected InvalidPath error for intermediate non-table, got {:?}", res);
+        }
+    }
+
+    #[test]
+    fn test_get_item_non_table_intermediate() {
+        let file = NamedTempFile::new().unwrap();
+        let path = file.path();
+        fs::write(
+            path,
+            r#"
+            [x]
+            y = "string_value"
+        "#,
+        )
+        .unwrap();
+        let editor = TomlLayerEditor::open(path).unwrap();
+        // Trying to get a nested item where 'y' is a string, not a table
+        let doc = editor.document.read();
+        let item = editor.get_item(&doc, "x.y.z");
+        assert!(item.is_none());
+    }
+
+    #[test]
+    fn test_get_table_as_primitive() {
+        let file = NamedTempFile::new().unwrap();
+        let path = file.path();
+        fs::write(
+            path,
+            r#"
+            [db]
+            host = "localhost"
+        "#,
+        )
+        .unwrap();
+        let editor = TomlLayerEditor::open(path).unwrap();
+        let result: Option<String> = editor.get("db"); // Trying to get a table as a string
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_get_primitive_as_table() {
+        let file = NamedTempFile::new().unwrap();
+        let path = file.path();
+        fs::write(
+            path,
+            r#"
+            value = "test"
+        "#,
+        )
+        .unwrap();
+        let editor = TomlLayerEditor::open(path).unwrap();
+        let result: Option<String> = editor.get("value"); // Trying to get a string value
+        assert_eq!(result, Some("test".to_string()));
+    }
+
+    #[test]
+    fn test_toml_editor_is_dirty_persistence() {
+        let file = NamedTempFile::new().unwrap();
+        let path = file.path();
+        fs::write(path, r#""#).unwrap();
+
+        let mut editor = TomlLayerEditor::open(path).unwrap();
+        assert!(!editor.is_dirty());
+
+        editor.set("key", "val").unwrap();
+        assert!(editor.is_dirty());
+
+        editor.save().unwrap();
+        assert!(!editor.is_dirty());
+
+        editor.set("key", "val").unwrap();
+        assert!(editor.is_dirty());
     }
 }

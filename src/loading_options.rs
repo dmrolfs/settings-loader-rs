@@ -473,3 +473,203 @@ impl LoadingOptions for () {
         Vec::default()
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+    use tempfile::tempdir; // Import tempdir for use in tests
+
+    struct MockOptions {
+        config: Option<PathBuf>,
+        secrets: Option<PathBuf>,
+        env_override: Option<Environment>,
+    }
+
+    impl LoadingOptions for MockOptions {
+        type Error = SettingsError;
+
+        fn config_path(&self) -> Option<PathBuf> {
+            self.config.clone()
+        }
+
+        fn secrets_path(&self) -> Option<PathBuf> {
+            self.secrets.clone()
+        }
+
+        fn implicit_search_paths(&self) -> Vec<PathBuf> {
+            vec![PathBuf::from("/etc/app"), PathBuf::from("./config")]
+        }
+
+        fn environment_override(&self) -> Option<Environment> {
+            self.env_override.clone()
+        }
+    }
+
+    impl MultiScopeConfig for MockOptions {
+        const APP_NAME: &'static str = "test-app";
+        const ORG_NAME: &'static str = "test-org";
+
+        fn find_config_in(dir: &Path) -> Option<PathBuf> {
+            let path = dir.join("settings.toml");
+            if path.exists() {
+                Some(path)
+            } else {
+                None
+            }
+        }
+    }
+
+    #[test]
+    fn test_loading_options_default_impl() {
+        let opts = MockOptions {
+            config: Some(PathBuf::from("config.toml")),
+            secrets: Some(PathBuf::from("secrets.toml")),
+            env_override: Some(Environment::from("development")),
+        };
+
+        assert_eq!(opts.config_path(), Some(PathBuf::from("config.toml")));
+        assert_eq!(opts.secrets_path(), Some(PathBuf::from("secrets.toml")));
+        assert_eq!(opts.implicit_search_paths().len(), 2);
+        assert_eq!(opts.environment_override(), Some(Environment::from("development")));
+        assert_eq!(MockOptions::env_prefix(), "APP");
+        assert_eq!(MockOptions::env_separator(), "__");
+    }
+
+    #[test]
+    fn test_multi_scope_config_default_scopes() {
+        let scopes = MockOptions::default_scopes();
+        assert_eq!(scopes.len(), 5);
+        assert!(scopes.contains(&crate::ConfigScope::Preferences));
+        assert!(scopes.contains(&crate::ConfigScope::ProjectLocal));
+    }
+
+    #[test]
+    fn test_no_options_impl() {
+        let opts: NoOptions = ();
+        assert_eq!(opts.config_path(), None);
+        assert_eq!(opts.secrets_path(), None);
+        assert!(opts.implicit_search_paths().is_empty());
+    }
+
+    #[test]
+    fn test_multi_scope_resolve_path_runtime() {
+        assert_eq!(MockOptions::resolve_path(crate::ConfigScope::Runtime), None);
+    }
+
+    #[test]
+    #[cfg(not(feature = "multi-scope"))]
+    fn test_multi_scope_resolve_path_preferences_no_feature() {
+        assert_eq!(MockOptions::resolve_path(crate::ConfigScope::Preferences), None);
+    }
+
+    #[test]
+    #[cfg(not(feature = "multi-scope"))]
+    fn test_multi_scope_resolve_path_user_global_no_feature() {
+        assert_eq!(MockOptions::resolve_path(crate::ConfigScope::UserGlobal), None);
+    }
+
+    #[test]
+    #[cfg(not(feature = "multi-scope"))]
+    fn test_multi_scope_resolve_path_local_data_no_feature() {
+        assert_eq!(MockOptions::resolve_path(crate::ConfigScope::LocalData), None);
+    }
+
+    #[test]
+    #[cfg(not(feature = "multi-scope"))]
+    fn test_multi_scope_resolve_path_persistent_data_no_feature() {
+        assert_eq!(MockOptions::resolve_path(crate::ConfigScope::PersistentData), None);
+    }
+
+    #[test]
+    fn test_multi_scope_resolve_path_project_local() {
+        use std::fs;
+        use tempfile::tempdir;
+
+        // Create a temporary directory and a settings.toml file in it
+        let dir = tempdir().unwrap();
+        let current_dir_backup = std::env::current_dir().unwrap();
+
+        let file_path_in_temp = dir.path().join("settings.toml");
+        fs::write(&file_path_in_temp, "key = \"value\"").unwrap();
+
+        std::env::set_current_dir(dir.path()).unwrap();
+
+        // Use a consistent canonicalized path for the assertion
+        let expected_canonical_path = file_path_in_temp.canonicalize().unwrap();
+
+        let resolved_path = MockOptions::resolve_path(crate::ConfigScope::ProjectLocal);
+        assert!(resolved_path.is_some(), "Resolved path should not be None");
+        assert_eq!(resolved_path.unwrap().canonicalize().unwrap(), expected_canonical_path);
+
+        std::env::set_current_dir(current_dir_backup).unwrap(); // Restore original current directory
+    }
+
+    #[test]
+    fn test_multi_scope_resolve_path_project_local_no_file() {
+        let dir = tempdir().unwrap();
+        let current_dir_backup = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&dir).unwrap();
+
+        let resolved_path = MockOptions::resolve_path(crate::ConfigScope::ProjectLocal);
+        assert_eq!(resolved_path, None);
+
+        std::env::set_current_dir(current_dir_backup).unwrap();
+    }
+
+    #[test]
+    fn test_environment_with_override() {
+        let opts = MockOptions {
+            config: None,
+            secrets: None,
+            env_override: Some(Environment::from("test_override")),
+        };
+        assert_eq!(opts.environment(), Some(Environment::from("test_override")));
+    }
+
+    #[test]
+    fn test_environment_with_env_var() {
+        // Ensure APP_ENVIRONMENT is not set initially for a clean test
+        std::env::remove_var("APP_ENVIRONMENT");
+        std::env::set_var("APP_ENVIRONMENT", "test_env_var");
+
+        let opts = MockOptions { config: None, secrets: None, env_override: None };
+        assert_eq!(opts.environment(), Some(Environment::from("test_env_var")));
+        std::env::remove_var("APP_ENVIRONMENT"); // Clean up
+    }
+
+    #[test]
+    fn test_environment_no_override_no_env_var() {
+        std::env::remove_var("APP_ENVIRONMENT"); // Ensure it's not set
+
+        let opts = MockOptions { config: None, secrets: None, env_override: None };
+        // It should warn and return None. We can't easily capture logs, so just check None.
+        assert_eq!(opts.environment(), None);
+    }
+
+    #[test]
+    fn test_environment_env_var_with_custom_name() {
+        std::env::remove_var("CUSTOM_APP_ENV"); // Clean up any previous run
+        std::env::set_var("CUSTOM_APP_ENV", "custom_env");
+
+        struct CustomEnvOptions;
+        impl LoadingOptions for CustomEnvOptions {
+            type Error = SettingsError;
+            fn config_path(&self) -> Option<PathBuf> {
+                None
+            }
+            fn secrets_path(&self) -> Option<PathBuf> {
+                None
+            }
+            fn implicit_search_paths(&self) -> Vec<PathBuf> {
+                Vec::new()
+            }
+            fn env_app_environment() -> &'static str {
+                "CUSTOM_APP_ENV"
+            }
+        }
+
+        let opts = CustomEnvOptions;
+        assert_eq!(opts.environment(), Some(Environment::from("custom_env")));
+        std::env::remove_var("CUSTOM_APP_ENV"); // Clean up
+    }
+}

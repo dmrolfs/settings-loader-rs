@@ -24,9 +24,7 @@ pub struct JsonLayerEditor {
 impl JsonLayerEditor {
     /// Opens an existing JSON file and parses it into a `JsonLayerEditor`.
     pub fn open(path: &Path) -> Result<Self, EditorError> {
-        let content = fs::read_to_string(path)
-            .with_context(|| format!("Failed to read JSON file: {}", path.display()))
-            .map_err(|e| EditorError::IoError(io::Error::other(e.to_string())))?;
+        let content = fs::read_to_string(path).map_err(EditorError::IoError)?;
 
         let document: Value = serde_json::from_str(&content)
             .with_context(|| format!("Failed to parse JSON file: {}", path.display()))
@@ -106,7 +104,7 @@ impl LayerEditor for JsonLayerEditor {
         let mut doc = self.document.write();
         let parts: Vec<&str> = key.split('.').collect();
 
-        if parts.is_empty() {
+        if parts.is_empty() || parts.iter().any(|p| p.is_empty()) {
             return Err(EditorError::InvalidPath("Empty key provided for unset".to_string()));
         }
 
@@ -128,7 +126,7 @@ impl LayerEditor for JsonLayerEditor {
                 Err(EditorError::key_not_found(key))
             }
         } else {
-            Err(EditorError::KeyNotFound(format!(
+            Err(EditorError::InvalidPath(format!(
                 "Parent path '{}' is not an object",
                 parent_path_str
             )))
@@ -158,19 +156,11 @@ impl LayerEditor for JsonLayerEditor {
         let content = serde_json::to_string_pretty(&*self.document.read())
             .map_err(|e| EditorError::serialization_error(format!("Failed to serialize document: {}", e)))?;
 
-        let mut file = fs::File::create(&temp_path)
-            .with_context(|| format!("Failed to create temporary file: {}", temp_path.display()))
-            .map_err(|e| EditorError::IoError(io::Error::other(e.to_string())))?;
-        file.write_all(content.as_bytes())
-            .with_context(|| format!("Failed to write to temporary file: {}", temp_path.display()))
-            .map_err(|e| EditorError::IoError(io::Error::other(e.to_string())))?;
-        file.sync_all()
-            .with_context(|| format!("Failed to sync temporary file: {}", temp_path.display()))
-            .map_err(|e| EditorError::IoError(io::Error::other(e.to_string())))?;
+        let mut file = fs::File::create(&temp_path).map_err(EditorError::IoError)?;
+        file.write_all(content.as_bytes()).map_err(EditorError::IoError)?;
+        file.sync_all().map_err(EditorError::IoError)?;
 
-        fs::rename(&temp_path, path)
-            .with_context(|| format!("Failed to rename temporary file to: {}", path.display()))
-            .map_err(|e| EditorError::IoError(io::Error::other(e.to_string())))?;
+        fs::rename(&temp_path, path).map_err(EditorError::IoError)?;
 
         *self.dirty.write() = false;
         Ok(())
@@ -340,5 +330,81 @@ mod tests {
         let mut sorted_keys = keys;
         sorted_keys.sort();
         assert_eq!(sorted_keys, vec!["key1", "section1", "section2"]);
+    }
+
+    #[test]
+    fn test_json_editor_invalid_path() {
+        let file = NamedTempFile::new().unwrap();
+        let path = file.path();
+        fs::write(path, r#"{"a": "not_an_object", "b": {"c": "value"}}"#).unwrap();
+
+        let mut editor = JsonLayerEditor::open(path).unwrap();
+
+        // Test setting a nested key on a non-object value
+        let res = editor.set("a.b", 123);
+        assert!(res.is_err());
+        if let Err(EditorError::InvalidPath(msg)) = res {
+            assert!(msg.contains("Path segment 'a' is not an object"));
+        } else {
+            panic!("Expected InvalidPath error, got {:?}", res);
+        }
+
+        // Test unsetting a key whose parent is not an object
+        let res = editor.unset("b.c.d");
+        assert!(res.is_err());
+        if let Err(EditorError::InvalidPath(msg)) = res {
+            assert!(msg.contains("Parent path 'b.c' is not an object"));
+        } else {
+            panic!("Expected InvalidPath error for non-object parent, got {:?}", res);
+        }
+    }
+
+    #[test]
+    fn test_json_editor_unset_empty_key() {
+        let file = NamedTempFile::new().unwrap();
+        let path = file.path();
+        fs::write(path, r#"{"key": "value"}"#).unwrap();
+
+        let mut editor = JsonLayerEditor::open(path).unwrap();
+        let res = editor.unset("");
+        assert!(res.is_err());
+        if let Err(EditorError::InvalidPath(msg)) = res {
+            assert!(msg.contains("Empty key provided for unset"));
+        } else {
+            panic!("Expected InvalidPath error for empty key, got {:?}", res);
+        }
+    }
+
+    #[test]
+    fn test_json_editor_get_value_mut_root_key() {
+        let mut doc = serde_json::from_str(r#"{"key1": "value1"}"#).unwrap();
+        let key_ref = JsonLayerEditor::get_value_mut(&mut doc, "key1").unwrap();
+        assert_eq!(key_ref, &mut serde_json::Value::String("value1".to_string()));
+    }
+
+    #[test]
+    fn test_json_editor_get_value_mut_new_root_key() {
+        let mut doc = serde_json::Value::Object(serde_json::Map::new());
+        let key_ref = JsonLayerEditor::get_value_mut(&mut doc, "new_key").unwrap();
+        assert_eq!(key_ref, &mut serde_json::Value::Null);
+    }
+
+    #[test]
+    fn test_json_editor_is_dirty_persistence() {
+        let file = NamedTempFile::new().unwrap();
+        let path = file.path();
+        fs::write(path, r#"{}"#).unwrap();
+
+        let mut editor = JsonLayerEditor::open(path).unwrap();
+        assert!(!editor.is_dirty());
+
+        editor.set("key", "val").unwrap();
+        assert!(editor.is_dirty());
+
+        editor.save().unwrap();
+        assert!(!editor.is_dirty());
+
+        editor.set("key", "val").unwrap(); // Setting same value still marks dirty in current implementation
+        assert!(editor.is_dirty());
     }
 }

@@ -121,6 +121,28 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_url_host_invalid() {
+        let settings = HttpServerSettings { host: "invalid host".to_string(), port: 80 };
+        assert!(settings.url_host().is_err());
+    }
+
+    #[test]
+    fn test_url_invalid() {
+        let settings = HttpServerSettings { host: "localhost".to_string(), port: 80 };
+        // Valid scheme
+        assert!(settings.url("http").is_ok());
+        // Invalid scheme chars would be caught by URL parser if they make the whole string invalid
+        let settings_bad = HttpServerSettings { host: "###".to_string(), port: 80 };
+        assert!(settings_bad.url("http").is_err());
+    }
+
+    #[test]
+    fn test_address() {
+        let settings = HttpServerSettings { host: "localhost".to_string(), port: 8080 };
+        assert_eq!(settings.address(), "localhost:8080");
+    }
+
+    #[test]
     fn test_url_host() {
         let local = HttpServerSettings { host: "127.0.0.1".to_string(), port: 80 };
         assert_let!(Ok(actual) = local.url_host());

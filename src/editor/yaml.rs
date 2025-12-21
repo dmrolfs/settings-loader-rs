@@ -24,9 +24,7 @@ pub struct YamlLayerEditor {
 impl YamlLayerEditor {
     /// Opens an existing YAML file and parses it into a `YamlLayerEditor`.
     pub fn open(path: &Path) -> Result<Self, EditorError> {
-        let content = fs::read_to_string(path)
-            .with_context(|| format!("Failed to read YAML file: {}", path.display()))
-            .map_err(|e| EditorError::IoError(io::Error::other(e.to_string())))?;
+        let content = fs::read_to_string(path).map_err(EditorError::IoError)?;
 
         let document: Value = serde_yaml::from_str(&content)
             .with_context(|| format!("Failed to parse YAML file: {}", path.display()))
@@ -68,9 +66,13 @@ impl YamlLayerEditor {
                     .entry(part_value)
                     .or_insert(Value::Null));
             } else {
+                // If current_value is not a mapping, make it one to allow descent
+                if !current_value.is_mapping() {
+                    *current_value = Value::Mapping(serde_yaml::Mapping::new());
+                }
                 current_value = current_value
                     .as_mapping_mut()
-                    .ok_or_else(|| EditorError::InvalidPath(format!("Path segment '{}' is not a mapping", part)))?
+                    .unwrap() // Safe unwrap after checking/converting to mapping
                     .entry(part_value)
                     .or_insert(Value::Mapping(serde_yaml::Mapping::new()));
             }
@@ -107,7 +109,7 @@ impl LayerEditor for YamlLayerEditor {
         let mut doc = self.document.write();
         let parts: Vec<&str> = key.split('.').collect();
 
-        if parts.is_empty() {
+        if parts.is_empty() || parts.iter().any(|p| p.is_empty()) {
             return Err(EditorError::InvalidPath("Empty key provided for unset".to_string()));
         }
 
@@ -117,8 +119,7 @@ impl LayerEditor for YamlLayerEditor {
         let parent_value: &mut Value = if parent_path_str.is_empty() {
             &mut doc
         } else {
-            YamlLayerEditor::get_value_mut(&mut doc, &parent_path_str)
-                .map_err(|_| EditorError::key_not_found(&parent_path_str))?
+            YamlLayerEditor::get_value_mut(&mut doc, &parent_path_str)?
         };
 
         if let Some(mapping) = parent_value.as_mapping_mut() {
@@ -129,7 +130,7 @@ impl LayerEditor for YamlLayerEditor {
                 Err(EditorError::key_not_found(key))
             }
         } else {
-            Err(EditorError::KeyNotFound(format!(
+            Err(EditorError::InvalidPath(format!(
                 "Parent path '{}' is not a mapping",
                 parent_path_str
             )))
@@ -159,19 +160,11 @@ impl LayerEditor for YamlLayerEditor {
         let content = serde_yaml::to_string(&*self.document.read())
             .map_err(|e| EditorError::serialization_error(format!("Failed to serialize document: {}", e)))?;
 
-        let mut file = fs::File::create(&temp_path)
-            .with_context(|| format!("Failed to create temporary file: {}", temp_path.display()))
-            .map_err(|e| EditorError::IoError(io::Error::other(e.to_string())))?;
-        file.write_all(content.as_bytes())
-            .with_context(|| format!("Failed to write to temporary file: {}", temp_path.display()))
-            .map_err(|e| EditorError::IoError(io::Error::other(e.to_string())))?;
-        file.sync_all()
-            .with_context(|| format!("Failed to sync temporary file: {}", temp_path.display()))
-            .map_err(|e| EditorError::IoError(io::Error::other(e.to_string())))?;
+        let mut file = fs::File::create(&temp_path).map_err(EditorError::IoError)?;
+        file.write_all(content.as_bytes()).map_err(EditorError::IoError)?;
+        file.sync_all().map_err(EditorError::IoError)?;
 
-        fs::rename(&temp_path, path)
-            .with_context(|| format!("Failed to rename temporary file to: {}", path.display()))
-            .map_err(|e| EditorError::IoError(io::Error::other(e.to_string())))?;
+        fs::rename(&temp_path, path).map_err(EditorError::IoError)?;
 
         *self.dirty.write() = false;
         Ok(())
@@ -325,5 +318,137 @@ mod tests {
         let mut sorted_keys = keys;
         sorted_keys.sort();
         assert_eq!(sorted_keys, vec!["key1", "section1", "section2"]);
+    }
+
+    #[test]
+    fn test_yaml_editor_invalid_path() {
+        let file = NamedTempFile::new().unwrap();
+        let path = file.path();
+        fs::write(path, r#"a: not_a_mapping"#).unwrap();
+
+        let mut editor = YamlLayerEditor::open(path).unwrap();
+        let res = editor.set("a.b", 123);
+        assert!(res.is_err());
+        if let Err(EditorError::InvalidPath(msg)) = res {
+            assert!(msg.contains("Path segment 'a' is not a mapping"));
+        } else {
+            panic!("Expected InvalidPath error, got {:?}", res);
+        }
+    }
+
+    #[test]
+    fn test_yaml_editor_unset_empty_key() {
+        let file = NamedTempFile::new().unwrap();
+        let path = file.path();
+        fs::write(path, r#"key: value"#).unwrap();
+
+        let mut editor = YamlLayerEditor::open(path).unwrap();
+        let res = editor.unset("");
+        assert!(res.is_err());
+        if let Err(EditorError::InvalidPath(msg)) = res {
+            assert!(msg.contains("Empty key provided for unset"));
+        } else {
+            panic!("Expected InvalidPath error for empty key, got {:?}", res);
+        }
+    }
+
+    #[test]
+    fn test_yaml_editor_unset_parent_not_mapping() {
+        let file = NamedTempFile::new().unwrap();
+        let path = file.path();
+        fs::write(
+            path,
+            r#"
+            section:
+                key: value
+                non_mapping: 123
+        "#,
+        )
+        .unwrap();
+
+        let mut editor = YamlLayerEditor::open(path).unwrap();
+        // Attempt to unset a key inside a non-mapping value
+        let res = editor.unset("section.non_mapping.nested");
+        assert!(res.is_err());
+        if let Err(EditorError::InvalidPath(msg)) = res {
+            assert!(msg.contains("is not a mapping"));
+        } else {
+            panic!("Expected InvalidPath error for non-mapping parent, got {:?}", res);
+        }
+    }
+
+    #[test]
+    fn test_get_value_mut_intermediate_non_mapping() {
+        let file = NamedTempFile::new().unwrap();
+        let path = file.path();
+        fs::write(
+            path,
+            r#"
+            a:
+                b: string_value
+        "#,
+        )
+        .unwrap();
+        let mut editor = YamlLayerEditor::open(path).unwrap();
+        // Trying to get a mutable item where 'b' is a string, not a mapping
+        let res = editor.set("a.b.c", 1);
+        assert!(res.is_err());
+        if let Err(EditorError::InvalidPath(msg)) = res {
+            assert!(msg.contains("Path segment 'b' is not a mapping"));
+        } else {
+            panic!("Expected InvalidPath error for intermediate non-mapping, got {:?}", res);
+        }
+    }
+
+    #[test]
+    fn test_get_table_as_primitive_yaml() {
+        let file = NamedTempFile::new().unwrap();
+        let path = file.path();
+        fs::write(
+            path,
+            r#"
+            db:
+                host: localhost
+        "#,
+        )
+        .unwrap();
+        let editor = YamlLayerEditor::open(path).unwrap();
+        let result: Option<String> = editor.get("db"); // Trying to get a mapping as a string
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_get_primitive_as_table_yaml() {
+        let file = NamedTempFile::new().unwrap();
+        let path = file.path();
+        fs::write(
+            path,
+            r#"
+            value: test
+        "#,
+        )
+        .unwrap();
+        let editor = YamlLayerEditor::open(path).unwrap();
+        let result: Option<serde_yaml::Mapping> = editor.get("value"); // Trying to get a string as a mapping
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_yaml_editor_is_dirty_persistence() {
+        let file = NamedTempFile::new().unwrap();
+        let path = file.path();
+        fs::write(path, r#"{}"#).unwrap();
+
+        let mut editor = YamlLayerEditor::open(path).unwrap();
+        assert!(!editor.is_dirty());
+
+        editor.set("key", "val").unwrap();
+        assert!(editor.is_dirty());
+
+        editor.save().unwrap();
+        assert!(!editor.is_dirty());
+
+        editor.set("key", "val").unwrap();
+        assert!(editor.is_dirty());
     }
 }
