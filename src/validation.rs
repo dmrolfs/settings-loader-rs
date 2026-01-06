@@ -1469,7 +1469,7 @@ mod tests {
     #[test]
     fn test_setting_type_float_valid() {
         let st = SettingType::Float { min: None, max: None };
-        assert!(st.validate("test", &serde_json::json!(3.14)).is_ok());
+        assert!(st.validate("test", &serde_json::json!(std::f64::consts::PI)).is_ok());
         assert!(st.validate("test", &serde_json::json!(42)).is_ok()); // Integer coerced to float
     }
 

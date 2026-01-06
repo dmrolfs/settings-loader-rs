@@ -945,7 +945,7 @@ mod tests {
 
     #[test]
     fn visibility_ordering() {
-        let mut visibilities = vec![
+        let mut visibilities = [
             Visibility::Secret,
             Visibility::Public,
             Visibility::Advanced,
@@ -1015,7 +1015,7 @@ mod tests {
 
     #[test]
     fn constraint_all_variants_are_distinct() {
-        let constraints = vec![
+        let constraints = [
             Constraint::Pattern(".*".to_string()),
             Constraint::Range { min: 0.0, max: 100.0 },
             Constraint::Length { min: 1, max: 10 },
