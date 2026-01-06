@@ -1,6 +1,6 @@
 [package]
 name = "settings_loader"
-version = "1.0.0-rc.1"
+version = "1.0.0"
 edition = "2021"
 authors = ["Damon Rolfs <drolfs@gmail.com>"]
 description = "Opinionated configuration settings load mechanism for Rust applications"
