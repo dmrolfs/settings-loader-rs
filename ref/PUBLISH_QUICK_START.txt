@@ -1,0 +1,156 @@
+================================================================================
+                    settings-loader v1.0.0 PUBLICATION GUIDE
+================================================================================
+
+STATUS: ✅ Ready to Publish (2026-01-06)
+CURRENT: 1.0.0-rc.1
+TARGET: 1.0.0 stable on crates.io
+
+================================================================================
+                              ONE-TIME SETUP
+================================================================================
+
+Before publishing, ensure you have crates.io credentials:
+
+  $ cargo login
+  (Enter your crates.io API token)
+
+Check you have git configured:
+
+  $ git config user.name
+  $ git config user.email
+
+================================================================================
+                            QUICK PUBLICATION STEPS
+================================================================================
+
+1. VERIFY CODE QUALITY
+   $ cargo test --lib --all-features
+   Expected: ✅ 350 passed; 0 failed
+
+   $ cargo clippy --all-features -- -D warnings
+   Expected: ✅ No warnings
+
+2. UPDATE VERSION & CHANGELOG
+   Edit Cargo.toml (line 3):
+   - version = "1.0.0-rc.1"    → version = "1.0.0"
+
+   Edit CHANGELOG.md:
+   - Move [Unreleased] section to [1.0.0] - 2026-01-06
+   - Review release notes accuracy
+
+3. DRY RUN (RECOMMENDED)
+   $ cargo publish --dry-run
+   Expected: ✅ Package verified successfully, warning: aborting upload due to dry run
+
+4. COMMIT & TAG
+   $ git add Cargo.toml CHANGELOG.md
+   $ git commit -m "chore: release v1.0.0
+
+   Major stable release with explicit layering, editing, and metadata support.
+   Ready for production use."
+
+   $ git tag -a v1.0.0 -m "Release v1.0.0: Stable API milestone"
+
+5. PUSH TO GITHUB (if desired before crates.io)
+   $ git push origin feat/comprehensive-config-management-v1
+   $ git push origin v1.0.0
+
+6. PUBLISH TO CRATES.IO
+   $ cargo publish
+   Expected: ✅ Published to crates.io
+
+7. VERIFY PUBLICATION
+   Open: https://crates.io/crates/settings_loader
+   Check for version 1.0.0 listed
+
+   Open: https://docs.rs/settings_loader/latest/
+   Verify documentation renders correctly
+
+================================================================================
+                               FAST CHECKLIST
+================================================================================
+
+PRE-PUBLISH:
+  [ ] cargo test --lib --all-features passes
+  [ ] cargo clippy --all-features has 0 warnings
+  [ ] Cargo.toml version updated to 1.0.0
+  [ ] CHANGELOG.md finalized with [1.0.0] section
+  [ ] cargo publish --dry-run passes
+  [ ] No uncommitted changes (git status is clean)
+
+DURING PUBLISH:
+  [ ] cargo publish succeeds
+  [ ] crates.io shows version 1.0.0 available
+  [ ] docs.rs shows updated documentation
+
+POST-PUBLISH:
+  [ ] GitHub release created with CHANGELOG content
+  [ ] Announcements sent (optional)
+  [ ] version bumped in Cargo.toml to 1.0.1-dev or next version
+
+================================================================================
+                              ROLLBACK PROCEDURES
+================================================================================
+
+If issues found BEFORE publish (dry-run fails):
+  1. Fix the issue
+  2. Re-run dry-run: cargo publish --dry-run
+  3. Retry publication
+
+If issues found AFTER crates.io publish:
+  1. Fix the issue in new commit
+  2. Bump to version 1.0.1
+  3. Publish 1.0.1 as patch release
+  4. Document issue in CHANGELOG
+
+Cannot yank v1.0.0 on crates.io (stable version), so test thoroughly.
+
+================================================================================
+                              USEFUL COMMANDS
+================================================================================
+
+# Test everything before publish
+cargo test --all-features && cargo clippy --all-features
+
+# Generate documentation locally
+cargo doc --all-features --open
+
+# Check what will be published
+cargo publish --dry-run --verbose
+
+# List features
+cargo metadata --format-version 1 | jq '.packages[] | select(.name=="settings_loader")'
+
+# Install locally to test
+cargo install --path . --force
+
+================================================================================
+                            DOCUMENTATION LINKS
+================================================================================
+
+Detailed Guides:
+  - PUBLICATION_SUMMARY.md          ← Start here for overview
+  - V1.0.0_PUBLICATION_CHECKLIST.md ← Detailed step-by-step
+  - history/MIGRATION_GUIDE.md      ← For users upgrading from 0.15.0
+  - history/README.md               ← Documentation navigation
+
+Project Context:
+  - history/CONSOLIDATED_ROADMAP.md ← Phases 1-7 roadmap
+  - ref/FUTURE_ENHANCEMENTS.md      ← Post v1.0.0 ideas
+  - README.md                        ← Feature overview (v1.0 ready)
+
+================================================================================
+                           EXPECTED TIMELINE
+================================================================================
+
+2025-12-21  1.0.0-rc.1 created with 350+ tests passing
+2026-01-06  Clippy warnings fixed, dry-run successful, ready for publication
+2026-01-?? Publish v1.0.0 to crates.io (once approved)
+2026-01-?? Post-publication cleanup and announcements (optional)
+
+================================================================================
+
+Questions? See PUBLICATION_SUMMARY.md or history/V1.0.0_PUBLICATION_CHECKLIST.md
+
+Generated: 2026-01-06 | Status: Ready for Publication ✅
