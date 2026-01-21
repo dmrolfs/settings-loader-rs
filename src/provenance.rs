@@ -142,15 +142,33 @@ impl SourceMap {
     /// Generate a structured audit report of all configuration sources.
     /// Inserts all keys from a source into the map, only if they have higher precedence (higher layer_index).
     pub fn insert_layer(&mut self, metadata: SourceMetadata, props: HashMap<String, config::Value>) {
-        for key in props.keys() {
-            let should_insert = match self.entries.get(key) {
-                Some(existing) => metadata.layer_index >= existing.layer_index,
-                None => true,
-            };
+        for (key, value) in props {
+            self.flatten_and_insert(key, value, &metadata);
+        }
+    }
 
-            if should_insert {
-                self.entries.insert(key.clone(), metadata.clone());
-            }
+    fn flatten_and_insert(&mut self, key: String, value: config::Value, metadata: &SourceMetadata) {
+        use config::ValueKind;
+
+        match value.kind {
+            ValueKind::Table(table) => {
+                for (sub_key, sub_value) in table {
+                    let full_key = format!("{}.{}", key, sub_key);
+                    self.flatten_and_insert(full_key, sub_value, metadata);
+                }
+            },
+            // For arrays, we currently track the entire array as a single key.
+            // If we need index-level provenance, we'd expand this.
+            _ => {
+                let should_insert = match self.entries.get(&key) {
+                    Some(existing) => metadata.layer_index >= existing.layer_index,
+                    None => true,
+                };
+
+                if should_insert {
+                    self.entries.insert(key, metadata.clone());
+                }
+            },
         }
     }
 

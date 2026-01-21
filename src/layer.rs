@@ -269,6 +269,15 @@ impl LayerBuilder {
         self
     }
 
+    /// Add a path-based configuration layer with specific scope information.
+    ///
+    /// This is useful for manual scope discovery while preserving provenance.
+    pub fn with_scoped_path(mut self, path: impl AsRef<std::path::Path>, scope: crate::ConfigScope) -> Self {
+        self.layers
+            .push(ConfigLayer::ScopedPath { path: path.as_ref().to_path_buf(), scope });
+        self
+    }
+
     /// Add multiple scopes to the layer builder using MultiScopeConfig.
     ///
     /// Automatically resolves paths for each scope based on platform conventions

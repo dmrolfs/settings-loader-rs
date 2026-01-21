@@ -9,6 +9,7 @@
 //! - [`Constraint`] - Additional validation rules
 //! - [`SettingType`] - Rich type system with built-in validation
 //! - [`SettingGroup`] - Organize settings into logical groups
+//! - [`ConditionalVisibility`] - Conditional visibility based on another setting's value
 //! - [`SettingMetadata`] - Complete description of a single setting
 //! - [`ConfigSchema`] - Schema for an application's entire configuration
 //!
@@ -308,6 +309,57 @@ pub struct SettingGroup {
     pub settings: Vec<String>,
 }
 
+/// Declares that a setting is only visible when another setting has a specific value
+///
+/// Used for conditional visibility logic where certain settings should only appear
+/// when a base setting (e.g., `llm.provider`) has a specific value (e.g., `"ollama"`).
+///
+/// # Examples
+///
+/// ```ignore
+/// use settings_loader::metadata::ConditionalVisibility;
+///
+/// // "Show llm.ollama.* when llm.provider = 'ollama'"
+/// let condition = ConditionalVisibility {
+///     base_setting: "llm.provider".to_string(),
+///     depends_on_value: "ollama".to_string(),
+///     applies_to_pattern: "llm.ollama.*".to_string(),
+/// };
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ConditionalVisibility {
+    /// Base setting key that controls visibility (e.g., "llm.provider")
+    pub base_setting: String,
+    
+    /// Value that enables this conditional (e.g., "ollama")
+    /// When base_setting == depends_on_value, settings matching applies_to_pattern are shown
+    pub depends_on_value: String,
+    
+    /// Glob pattern for settings that become visible (e.g., "llm.ollama.*")
+    /// Supports wildcards: "llm.ollama.*", "database.postgres.*"
+    pub applies_to_pattern: String,
+}
+
+impl ConditionalVisibility {
+    /// Check if a setting key matches the applies_to_pattern
+    /// 
+    /// Handles glob patterns with trailing wildcard:
+    /// - "llm.ollama.*" matches "llm.ollama.base_url", "llm.ollama.model", etc.
+    /// - "spark.mcp.*" matches "spark.mcp.enabled", "spark.mcp.port", etc.
+    /// - Exact patterns (no wildcard) match only that exact key
+    pub fn matches_pattern(&self, key: &str) -> bool {
+        if self.applies_to_pattern.ends_with(".*") {
+            let prefix = &self.applies_to_pattern[..self.applies_to_pattern.len() - 2];
+            // Key must start with prefix, and have a dot immediately after
+            key.starts_with(prefix) && (key == prefix || key[prefix.len()..].starts_with('.'))
+        } else {
+            // Exact match for non-wildcard patterns
+            key == &self.applies_to_pattern
+        }
+    }
+}
+
 /// Complete description of a single configuration setting
 ///
 /// Combines type information, validation constraints, UI hints, and documentation
@@ -330,6 +382,7 @@ pub struct SettingGroup {
 ///     constraints: vec![Constraint::Required],
 ///     visibility: Visibility::Public,
 ///     group: Some("api".to_string()),
+///     conditional: None,
 /// };
 /// ```
 #[derive(Debug, Clone, PartialEq)]
@@ -355,6 +408,25 @@ pub struct SettingMetadata {
     /// Group/category for organization
     #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none"))]
     pub group: Option<String>,
+    /// Conditional visibility based on another setting's value
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "Option::is_none", default))]
+    pub conditional: Option<ConditionalVisibility>,
+}
+
+impl Default for SettingMetadata {
+    fn default() -> Self {
+        Self {
+            key: String::new(),
+            label: String::new(),
+            description: String::new(),
+            setting_type: SettingType::String { pattern: None, min_length: None, max_length: None },
+            default: None,
+            constraints: vec![],
+            visibility: Visibility::Public,
+            group: None,
+            conditional: None,
+        }
+    }
 }
 
 impl SettingMetadata {
@@ -2113,5 +2185,61 @@ mod tests {
             groups: vec![],
         };
         assert_eq!(s1, s2);
+    }
+
+    // ============ ConditionalVisibility Tests ============
+
+    /// Tests that ConditionalVisibility correctly matches settings with wildcard patterns
+    #[test]
+    fn conditional_visibility_wildcard_pattern_matching() {
+        let rule = ConditionalVisibility {
+            base_setting: "llm.provider".to_string(),
+            depends_on_value: "ollama".to_string(),
+            applies_to_pattern: "llm.ollama.*".to_string(),
+        };
+        
+        assert!(rule.matches_pattern("llm.ollama.base_url"));
+        assert!(rule.matches_pattern("llm.ollama.model"));
+        assert!(!rule.matches_pattern("llm.openai.api_key"));
+        assert!(!rule.matches_pattern("llm.ollama"));
+    }
+
+    /// Tests that ConditionalVisibility correctly matches exact patterns (no wildcard)
+    #[test]
+    fn conditional_visibility_exact_pattern_matching() {
+        let rule = ConditionalVisibility {
+            base_setting: "feature.flag".to_string(),
+            depends_on_value: "enabled".to_string(),
+            applies_to_pattern: "exact.key".to_string(),
+        };
+        
+        assert!(rule.matches_pattern("exact.key"));
+        assert!(!rule.matches_pattern("exact.key.nested"));
+        assert!(!rule.matches_pattern("exact"));
+    }
+
+    /// Tests that SettingMetadata can include ConditionalVisibility
+    #[test]
+    fn setting_metadata_with_conditional_visibility() {
+        let meta = SettingMetadata {
+            key: "llm.ollama.base_url".to_string(),
+            label: "Ollama Base URL".to_string(),
+            description: "Base URL for Ollama service".to_string(),
+            setting_type: SettingType::Url { schemes: vec!["http".to_string()] },
+            default: Some(json!("http://localhost:11434")),
+            constraints: vec![Constraint::Required],
+            visibility: Visibility::Public,
+            group: Some("llm".to_string()),
+            conditional: Some(ConditionalVisibility {
+                base_setting: "llm.provider".to_string(),
+                depends_on_value: "ollama".to_string(),
+                applies_to_pattern: "llm.ollama.*".to_string(),
+            }),
+        };
+        
+        assert!(meta.conditional.is_some());
+        let cond = meta.conditional.unwrap();
+        assert_eq!(cond.base_setting, "llm.provider");
+        assert!(cond.matches_pattern(&meta.key));
     }
 }
