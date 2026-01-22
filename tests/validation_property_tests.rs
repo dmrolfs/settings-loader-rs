@@ -454,6 +454,7 @@ mod validation_property_tests {
                 ],
                 visibility: Visibility::Public,
                 group: None,
+                conditional: None,
             };
 
             // Test with valid value
@@ -482,6 +483,7 @@ mod validation_property_tests {
                 constraints: vec![Constraint::Required],
                 visibility: Visibility::Secret,
                 group: None,
+                conditional: None,
             };
 
             let result = metadata.validate(&json!(value));

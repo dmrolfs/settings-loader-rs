@@ -57,6 +57,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         constraints: vec![Constraint::Required, Constraint::Range { min: 1024.0, max: 65535.0 }],
         visibility: settings_loader::metadata::Visibility::Public,
         group: Some("Server".to_string()),
+        conditional: None,
     });
 
     registry::register_setting(SettingMetadata {
@@ -68,6 +69,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         constraints: vec![],
         visibility: settings_loader::metadata::Visibility::Public,
         group: Some("Server".to_string()),
+        conditional: None,
     });
 
     registry::register_setting(SettingMetadata {
@@ -79,6 +81,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         constraints: vec![],
         visibility: settings_loader::metadata::Visibility::Public,
         group: Some("Server".to_string()),
+        conditional: None,
     });
 
     registry::register_setting(SettingMetadata {
@@ -92,6 +95,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         constraints: vec![Constraint::Required],
         visibility: settings_loader::metadata::Visibility::Secret,
         group: Some("Database".to_string()),
+        conditional: None,
     });
 
     registry::register_setting(SettingMetadata {
@@ -111,6 +115,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         constraints: vec![],
         visibility: settings_loader::metadata::Visibility::Public,
         group: Some("Logging".to_string()),
+        conditional: None,
     });
 
     // 3. Export everything!

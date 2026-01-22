@@ -28,6 +28,7 @@ mod introspection_trait_tests {
                     constraints: vec![],
                     visibility: Visibility::Public,
                     group: Some("api".to_string()),
+                    conditional: None,
                 },
                 SettingMetadata {
                     key: "api_key".to_string(),
@@ -38,6 +39,7 @@ mod introspection_trait_tests {
                     constraints: vec![],
                     visibility: Visibility::Secret,
                     group: Some("api".to_string()),
+                    conditional: None,
                 },
                 SettingMetadata {
                     key: "debug_mode".to_string(),
@@ -48,6 +50,7 @@ mod introspection_trait_tests {
                     constraints: vec![],
                     visibility: Visibility::Hidden,
                     group: Some("debug".to_string()),
+                    conditional: None,
                 },
             ],
             groups: vec![SettingGroup {
@@ -424,6 +427,7 @@ mod introspection_trait_tests {
             constraints: vec![],
             visibility: Visibility::Public,
             group: None,
+            conditional: None,
         }];
 
         let schema = ConfigSchema {
@@ -438,6 +442,7 @@ mod introspection_trait_tests {
                 constraints: vec![],
                 visibility: Visibility::Public,
                 group: None,
+                conditional: None,
             }],
             groups: vec![],
         };
@@ -480,6 +485,7 @@ mod introspection_trait_tests {
                 constraints: vec![],
                 visibility: Visibility::Public,
                 group: None,
+                conditional: None,
             }],
             groups: vec![],
         };
@@ -509,6 +515,7 @@ mod introspection_trait_tests {
                 constraints: vec![],
                 visibility: v,
                 group: None,
+                conditional: None,
             };
 
             assert_eq!(setting.visibility, v);
@@ -552,6 +559,7 @@ mod introspection_trait_tests {
                 constraints: vec![],
                 visibility: Visibility::Public,
                 group: None,
+                conditional: None,
             })
             .collect();
 

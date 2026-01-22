@@ -8,10 +8,8 @@
 
 #[cfg(feature = "metadata")]
 mod conditional_visibility_tests {
-    use settings_loader::metadata::{
-        ConditionalVisibility, SettingMetadata, SettingType, Visibility, Constraint,
-    };
     use serde_json::json;
+    use settings_loader::metadata::{ConditionalVisibility, Constraint, SettingMetadata, SettingType, Visibility};
 
     // ============================================================================
     // BASIC PATTERN MATCHING TESTS
@@ -187,7 +185,7 @@ mod conditional_visibility_tests {
         // Settings starting with "advanced."
         assert!(rule.matches_pattern("advanced.setting"));
         assert!(rule.matches_pattern("advanced.feature"));
-        
+
         // Prefix alone or different prefix don't match
         assert!(!rule.matches_pattern("advanced")); // Prefix alone
         assert!(!rule.matches_pattern("basic.setting")); // Different prefix
@@ -205,7 +203,7 @@ mod conditional_visibility_tests {
         // Matches settings under auth.oauth2.provider.
         assert!(rule.matches_pattern("auth.oauth2.provider.github"));
         assert!(rule.matches_pattern("auth.oauth2.provider.google"));
-        
+
         // Prefix alone or wrong path don't match
         assert!(!rule.matches_pattern("auth.oauth2.provider")); // Prefix alone
         assert!(!rule.matches_pattern("auth.oauth.provider.github")); // Different path
@@ -222,11 +220,7 @@ mod conditional_visibility_tests {
             key: "llm.ollama.base_url".to_string(),
             label: "Ollama Base URL".to_string(),
             description: "Base URL for Ollama service".to_string(),
-            setting_type: SettingType::String {
-                pattern: None,
-                min_length: None,
-                max_length: None,
-            },
+            setting_type: SettingType::String { pattern: None, min_length: None, max_length: None },
             default: Some(json!("http://localhost:11434")),
             constraints: vec![Constraint::Required],
             visibility: Visibility::Public,
@@ -255,11 +249,7 @@ mod conditional_visibility_tests {
             label: "LLM Provider".to_string(),
             description: "Which LLM provider to use".to_string(),
             setting_type: SettingType::Enum {
-                variants: vec![
-                    "ollama".to_string(),
-                    "openai".to_string(),
-                    "anthropic".to_string(),
-                ],
+                variants: vec!["ollama".to_string(), "openai".to_string(), "anthropic".to_string()],
             },
             default: Some(json!("ollama")),
             constraints: vec![Constraint::Required],
@@ -279,11 +269,7 @@ mod conditional_visibility_tests {
             key: "llm.ollama.base_url".to_string(),
             label: "Ollama Base URL".to_string(),
             description: "".to_string(),
-            setting_type: SettingType::String {
-                pattern: None,
-                min_length: None,
-                max_length: None,
-            },
+            setting_type: SettingType::String { pattern: None, min_length: None, max_length: None },
             default: Some(json!("http://localhost:11434")),
             constraints: vec![],
             visibility: Visibility::Public,
@@ -299,11 +285,7 @@ mod conditional_visibility_tests {
             key: "llm.openai.api_key".to_string(),
             label: "OpenAI API Key".to_string(),
             description: "".to_string(),
-            setting_type: SettingType::String {
-                pattern: None,
-                min_length: None,
-                max_length: None,
-            },
+            setting_type: SettingType::String { pattern: None, min_length: None, max_length: None },
             default: Some(json!("")),
             constraints: vec![],
             visibility: Visibility::Public,

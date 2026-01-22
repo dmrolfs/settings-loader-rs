@@ -16,6 +16,7 @@ fn test_registry_registration() {
         constraints: vec![Constraint::Required],
         visibility: Visibility::Public,
         group: Some("server".to_string()),
+        conditional: None,
     };
 
     registry.register(metadata.clone());
@@ -38,6 +39,7 @@ fn test_global_registry() {
         constraints: vec![],
         visibility: Visibility::Public,
         group: None,
+        conditional: None,
     };
 
     register_setting(metadata);
@@ -63,6 +65,7 @@ fn test_registry_introspection() {
         constraints: vec![],
         visibility: Visibility::Secret,
         group: None,
+        conditional: None,
     });
 
     assert_eq!(registry.settings_count(), 1);

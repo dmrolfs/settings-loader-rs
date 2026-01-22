@@ -1,21 +1,130 @@
 //! Settings Metadata & Introspection
 //!
 //! This module provides core types for describing, introspecting, and validating
-//! application configuration settings at runtime.
+//! application configuration settings at runtime. It enables runtime reflection over
+//! your configuration structure, making it possible to build dynamic UIs, generate
+//! documentation, and enforce advanced validation rules.
 //!
 //! # Core Types
 //!
-//! - [`Visibility`] - Controls UI display of settings
-//! - [`Constraint`] - Additional validation rules
-//! - [`SettingType`] - Rich type system with built-in validation
-//! - [`SettingGroup`] - Organize settings into logical groups
-//! - [`ConditionalVisibility`] - Conditional visibility based on another setting's value
-//! - [`SettingMetadata`] - Complete description of a single setting
-//! - [`ConfigSchema`] - Schema for an application's entire configuration
+//! - [`Visibility`] - Controls UI display of settings (public, hidden, secret, advanced)
+//! - [`Constraint`] - Additional validation rules beyond type checking
+//! - [`SettingType`] - Rich type system with 12+ variants and built-in validation hints
+//! - [`SettingGroup`] - Organize settings into logical groups for UI/documentation
+//! - [`ConditionalVisibility`] - Show settings only when specific conditions are met
+//! - [`SettingMetadata`] - Complete metadata description of a single configuration setting
+//! - [`ConfigSchema`] - Full schema for an application's entire configuration
+//!
+//! # Overview
+//!
+//! The metadata system allows you to:
+//!
+//! 1. **Describe Configuration**: Attach rich metadata to settings (labels, descriptions,
+//!    types, constraints, defaults)
+//! 2. **Build Dynamic UIs**: Generate TUI/CLI editors or web-based configuration interfaces
+//!    directly from metadata
+//! 3. **Generate Documentation**: Export JSON Schema, HTML docs, or example configs
+//! 4. **Validate at Runtime**: Enforce complex constraints beyond what serde provides
+//! 5. **Track Conditional Visibility**: Show/hide settings based on other settings' values
+//! 6. **Introspect Schemas**: Query configuration structure programmatically
+//!
+//! # Example: Building a Settings Editor
+//!
+//! ```ignore
+//! use settings_loader::metadata::{ConfigSchema, SettingMetadata, SettingType, Visibility};
+//!
+//! // Register your settings structure
+//! let mut schema = ConfigSchema::new("1.0", "my-app");
+//!
+//! schema.register(SettingMetadata {
+//!     key: "server.port".to_string(),
+//!     label: "Server Port".to_string(),
+//!     description: "HTTP server port (1024-65535)".to_string(),
+//!     setting_type: SettingType::Integer {
+//!         min: Some(1024),
+//!         max: Some(65535),
+//!     },
+//!     default: Some(json!(8080)),
+//!     constraints: vec![],
+//!     visibility: Visibility::Public,
+//!     group: Some("server".to_string()),
+//!     conditional: None,
+//! });
+//!
+//! // Export schema for tooling
+//! let json_schema = schema.to_json_schema()?;
+//! let html_docs = schema.to_html()?;
+//! let example_config = schema.to_example_toml()?;
+//! ```
+//!
+//! # Conditional Visibility
+//!
+//! Control which settings appear in UIs based on other settings' values. Useful for:
+//! - Plugin architectures (show provider-specific settings when provider is selected)
+//! - Feature flags (show feature settings only when feature is enabled)
+//! - Conditional fields (show password field only when auth method requires it)
+//!
+//! ```ignore
+//! use settings_loader::metadata::{ConditionalVisibility, SettingMetadata};
+//!
+//! let ollama_url = SettingMetadata {
+//!     key: "llm.ollama.base_url".to_string(),
+//!     // ... other fields ...
+//!     conditional: Some(ConditionalVisibility {
+//!         base_setting: "llm.provider".to_string(),
+//!         depends_on_value: "ollama".to_string(),
+//!         applies_to_pattern: "llm.ollama.*".to_string(),
+//!     }),
+//! };
+//! ```
+//!
+//! This declares: "Show settings matching `llm.ollama.*` only when `llm.provider` equals `ollama`".
+//!
+//! # Visibility Levels
+//!
+//! Control what different user audiences see:
+//!
+//! - **Public** - Shown to all users, basic configuration
+//! - **Hidden** - Not displayed in UI, but accessible programmatically
+//! - **Secret** - Shown in UI but with redacted/masked values
+//! - **Advanced** - Grouped in "Advanced" section for power users
+//!
+//! # Constraints
+//!
+//! Declare validation rules that can be enforced or used by UI validators:
+//!
+//! ```ignore
+//! use settings_loader::metadata::Constraint;
+//!
+//! let constraints = vec![
+//!     Constraint::Required,
+//!     Constraint::Range { min: 0.0, max: 100.0 },
+//!     Constraint::Length { min: 1, max: 255 },
+//!     Constraint::Pattern("[a-z0-9]+".to_string()),
+//!     Constraint::OneOf(vec!["dev".to_string(), "prod".to_string()]),
+//!     Constraint::Custom("app_specific_rule".to_string()),
+//! ];
+//! ```
+//!
+//! # SettingType System
+//!
+//! Rich type system supporting:
+//!
+//! - **Primitives**: Boolean, Integer, Float, String, Duration
+//! - **Specialized**: Url, PathBuf, Secret
+//! - **Collections**: Array, Map
+//! - **Nested**: Struct (for recursive introspection)
+//!
+//! Each type variant includes validation hints specific to that type.
 //!
 //! # Feature: `metadata`
 //!
-//! This module requires the `metadata` feature.
+//! This module requires the `metadata` feature to be enabled:
+//!
+//! ```toml
+//! [dependencies]
+//! settings-loader = { version = "1.0", features = ["metadata"] }
+//! ```
 
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -23,14 +132,49 @@ use std::time::Duration;
 
 /// Controls UI visibility and display of settings
 ///
+/// Visibility determines how settings appear in user interfaces, supporting
+/// different user personas and security requirements.
+///
+/// # Variants
+///
+/// * **Public** - Standard configuration visible to all users. For commonly-needed settings
+///   like server port or database host.
+/// * **Hidden** - Not shown in UI, but accessible through APIs. Useful for internal or
+///   experimental settings that should not be user-configurable.
+/// * **Secret** - Values are displayed in UI with masking/redaction. For sensitive
+///   credentials that should not be visible in logs or screenshots.
+/// * **Advanced** - Shown in a collapsible "Advanced" section. For power users who need
+///   fine-grained control (e.g., connection pool sizes, timeout values).
+///
+/// # Use Cases
+///
+/// - **Public**: `server.port`, `log.level`, `database.host`
+/// - **Hidden**: Internal debug flags, experimental features
+/// - **Secret**: `database.password`, `api_key`, `oauth_token`
+/// - **Advanced**: `connection_pool_size`, `timeout_ms`, `cache_ttl`
+///
 /// # Examples
 ///
 /// ```ignore
-/// use settings_loader::metadata::Visibility;
+/// use settings_loader::metadata::{SettingMetadata, SettingType, Visibility};
 ///
-/// let public = Visibility::Public;
-/// let secret = Visibility::Secret;
-/// let adv = Visibility::Advanced;
+/// let public_setting = SettingMetadata {
+///     key: "server.port".to_string(),
+///     visibility: Visibility::Public,
+///     // ... other fields ...
+/// };
+///
+/// let secret_setting = SettingMetadata {
+///     key: "database.password".to_string(),
+///     visibility: Visibility::Secret,  // Redacted in UI
+///     // ... other fields ...
+/// };
+///
+/// let advanced_setting = SettingMetadata {
+///     key: "connection.pool_size".to_string(),
+///     visibility: Visibility::Advanced,  // In "Advanced" section
+///     // ... other fields ...
+/// };
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -49,15 +193,67 @@ pub enum Visibility {
 
 /// Additional validation constraints beyond type checking
 ///
+/// Constraints define business rules and validation requirements that go beyond
+/// what the type system provides. They can be enforced by the application or used
+/// by UI validators to prevent invalid input.
+///
+/// # Variants
+///
+/// * **Pattern** - Regular expression constraint. Useful for email, phone, code formats.
+/// * **Range** - Numeric value constraint [min, max]. For ports, timeouts, percentages.
+/// * **Length** - String length constraint. Minimum and maximum character counts.
+/// * **Required** - Value must be present (not None/null). Default fields should require explicit values.
+/// * **OneOf** - Enumeration constraint. Value must be one of specified options.
+/// * **Custom** - Application-defined constraint. Name identifies the rule; validator is in application code.
+///
+/// # Usage
+///
+/// Constraints are typically collected in a `Vec` on [`SettingMetadata`]:
+///
+/// ```ignore
+/// use settings_loader::metadata::{SettingMetadata, Constraint};
+///
+/// let metadata = SettingMetadata {
+///     // ... other fields ...
+///     constraints: vec![
+///         Constraint::Required,
+///         Constraint::Length { min: 1, max: 255 },
+///         Constraint::Pattern("[a-zA-Z0-9.-]+".to_string()),
+///     ],
+/// };
+/// ```
+///
 /// # Examples
 ///
 /// ```ignore
 /// use settings_loader::metadata::Constraint;
 ///
-/// let required = Constraint::Required;
-/// let range = Constraint::Range { min: 1.0, max: 100.0 };
-/// let pattern = Constraint::Pattern("[0-9]+".to_string());
+/// let constraints = vec![
+///     // Port number must be in valid range
+///     Constraint::Range { min: 1.0, max: 65535.0 },
+///     
+///     // Email format validation
+///     Constraint::Pattern("[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}".to_string()),
+///     
+///     // Environment must be one of these values
+///     Constraint::OneOf(vec![
+///         "development".to_string(),
+///         "staging".to_string(),
+///         "production".to_string(),
+///     ]),
+///     
+///     // Application-specific rule
+///     Constraint::Custom("must_be_divisible_by_4".to_string()),
+/// ];
 /// ```
+///
+/// # Enforcement
+///
+/// The application is responsible for enforcing constraints. Use them to:
+/// - Generate UI validation rules
+/// - Pre-validate configuration before loading
+/// - Generate documentation about valid values
+/// - Create error messages for invalid configurations
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "serde", serde(tag = "constraint", rename_all = "snake_case"))]
@@ -313,37 +509,89 @@ pub struct SettingGroup {
 ///
 /// Used for conditional visibility logic where certain settings should only appear
 /// when a base setting (e.g., `llm.provider`) has a specific value (e.g., `"ollama"`).
+/// This enables plugin-like architectures and feature-flag patterns in configuration UIs.
+///
+/// # Use Cases
+///
+/// - **Provider Selection**: Show provider-specific settings only when that provider is selected
+///   (e.g., show Ollama URL only when `llm.provider = "ollama"`)
+/// - **Feature Flags**: Show feature-related settings only when that feature is enabled
+///   (e.g., show cache settings only when `cache.enabled = true`)
+/// - **Authentication Methods**: Show method-specific fields only when that method is chosen
+///   (e.g., show OAuth token only when `auth.method = "oauth"`)
+/// - **Database Drivers**: Show driver-specific options only for that driver
+///   (e.g., show PostgreSQL pool size only when `database.driver = "postgres"`)
+///
+/// # Pattern Matching
+///
+/// The `applies_to_pattern` supports glob patterns:
+///
+/// - **Wildcard patterns**: `"llm.ollama.*"` matches any key starting with `llm.ollama.`
+///   - Matches: `llm.ollama.base_url`, `llm.ollama.model`, `llm.ollama.timeout`
+///   - Does NOT match: `llm.ollama` (no trailing keys)
+/// - **Exact patterns**: `"cache.ttl"` matches only that exact key
+/// - **Hierarchy**: Patterns understand dot notation for nested settings
 ///
 /// # Examples
 ///
 /// ```ignore
-/// use settings_loader::metadata::ConditionalVisibility;
+/// use settings_loader::metadata::{ConditionalVisibility, SettingMetadata, SettingType};
 ///
-/// // "Show llm.ollama.* when llm.provider = 'ollama'"
-/// let condition = ConditionalVisibility {
+/// // Show Ollama settings only when provider is set to "ollama"
+/// let ollama_condition = ConditionalVisibility {
 ///     base_setting: "llm.provider".to_string(),
 ///     depends_on_value: "ollama".to_string(),
 ///     applies_to_pattern: "llm.ollama.*".to_string(),
 /// };
+///
+/// let ollama_url_metadata = SettingMetadata {
+///     key: "llm.ollama.base_url".to_string(),
+///     label: "Ollama Base URL".to_string(),
+///     description: "URL to local Ollama instance".to_string(),
+///     conditional: Some(ollama_condition),
+///     // ... other fields ...
+/// };
+///
+/// // Show OpenAI settings only when provider is set to "openai"
+/// let openai_condition = ConditionalVisibility {
+///     base_setting: "llm.provider".to_string(),
+///     depends_on_value: "openai".to_string(),
+///     applies_to_pattern: "llm.openai.*".to_string(),
+/// };
+///
+/// // Show OAuth token only when auth method uses OAuth
+/// let oauth_condition = ConditionalVisibility {
+///     base_setting: "auth.method".to_string(),
+///     depends_on_value: "oauth2".to_string(),
+///     applies_to_pattern: "auth.oauth.*".to_string(),
+/// };
 /// ```
+///
+/// # UI Rendering
+///
+/// A configuration UI should:
+/// 1. Scan all settings for conditional visibility
+/// 2. Evaluate the `base_setting` value
+/// 3. Show/hide settings matching `applies_to_pattern` based on comparison
+/// 4. Update visibility dynamically when `base_setting` changes
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ConditionalVisibility {
     /// Base setting key that controls visibility (e.g., "llm.provider")
     pub base_setting: String,
-    
+
     /// Value that enables this conditional (e.g., "ollama")
-    /// When base_setting == depends_on_value, settings matching applies_to_pattern are shown
+    /// When `base_setting == depends_on_value`, settings matching `applies_to_pattern` are shown
     pub depends_on_value: String,
-    
+
     /// Glob pattern for settings that become visible (e.g., "llm.ollama.*")
-    /// Supports wildcards: "llm.ollama.*", "database.postgres.*"
+    /// Supports wildcards: "llm.ollama.*", "database.postgres.*", or exact match "single.key"
     pub applies_to_pattern: String,
 }
 
 impl ConditionalVisibility {
     /// Check if a setting key matches the applies_to_pattern
-    /// 
+    ///
     /// Handles glob patterns with trailing wildcard:
     /// - "llm.ollama.*" matches "llm.ollama.base_url", "llm.ollama.model", etc.
     /// - "spark.mcp.*" matches "spark.mcp.enabled", "spark.mcp.port", etc.
@@ -355,7 +603,7 @@ impl ConditionalVisibility {
             key.starts_with(prefix) && key.len() > prefix.len() && key[prefix.len()..].starts_with('.')
         } else {
             // Exact match for non-wildcard patterns
-            key == &self.applies_to_pattern
+            key == self.applies_to_pattern
         }
     }
 }
@@ -363,12 +611,136 @@ impl ConditionalVisibility {
 /// Complete description of a single configuration setting
 ///
 /// Combines type information, validation constraints, UI hints, and documentation
-/// into a single metadata object describing a configuration parameter.
+/// into a single metadata object describing a configuration parameter. This is the
+/// core building block for runtime introspection and dynamic UI generation.
+///
+/// # Fields
+///
+/// - **key**: Dot-separated path to the setting (e.g., "database.host", "llm.provider")
+/// - **label**: Human-readable label for UI display
+/// - **description**: Detailed documentation of the setting's purpose and valid values
+/// - **setting_type**: Rich type information with validation hints
+/// - **default**: Default value as JSON (for flexibility across types)
+/// - **constraints**: Validation rules beyond type checking
+/// - **visibility**: How the setting appears in UIs (public, hidden, secret, advanced)
+/// - **group**: Category/section for organization in UIs and documentation
+/// - **conditional**: Conditional visibility based on another setting's value
+///
+/// # Building Metadata
+///
+/// Metadata objects are typically constructed for each setting in your configuration:
+///
+/// ```ignore
+/// use settings_loader::metadata::{SettingMetadata, SettingType, Visibility, Constraint, ConditionalVisibility};
+/// use serde_json::json;
+///
+/// let metadata = SettingMetadata {
+///     key: "server.port".to_string(),
+///     label: "Server Port".to_string(),
+///     description: "HTTP server listening port (1-65535)".to_string(),
+///     setting_type: SettingType::Integer {
+///         min: Some(1),
+///         max: Some(65535),
+///     },
+///     default: Some(json!(8080)),
+///     constraints: vec![Constraint::Required],
+///     visibility: Visibility::Public,
+///     group: Some("server".to_string()),
+///     conditional: None,
+/// };
+/// ```
+///
+/// # Real-World Examples
+///
+/// ```ignore
+/// use settings_loader::metadata::{SettingMetadata, SettingType, Visibility, Constraint, ConditionalVisibility};
+/// use serde_json::json;
+///
+/// // Basic setting
+/// let database_host = SettingMetadata {
+///     key: "database.host".to_string(),
+///     label: "Database Host".to_string(),
+///     description: "PostgreSQL server hostname or IP address".to_string(),
+///     setting_type: SettingType::String {
+///         pattern: Some("^[a-zA-Z0-9.-]+$".to_string()),
+///         min_length: Some(1),
+///         max_length: Some(255),
+///     },
+///     default: Some(json!("localhost")),
+///     constraints: vec![Constraint::Required],
+///     visibility: Visibility::Public,
+///     group: Some("database".to_string()),
+///     conditional: None,
+/// };
+///
+/// // Secret setting
+/// let database_password = SettingMetadata {
+///     key: "database.password".to_string(),
+///     label: "Database Password".to_string(),
+///     description: "PostgreSQL user password (stored securely)".to_string(),
+///     setting_type: SettingType::Secret,
+///     default: None,
+///     constraints: vec![Constraint::Required, Constraint::Length { min: 8, max: 128 }],
+///     visibility: Visibility::Secret,  // Redacted in UI
+///     group: Some("database".to_string()),
+///     conditional: None,
+/// };
+///
+/// // Conditional setting (shown only when provider is selected)
+/// let ollama_url = SettingMetadata {
+///     key: "llm.ollama.base_url".to_string(),
+///     label: "Ollama Base URL".to_string(),
+///     description: "URL to Ollama instance (e.g., http://localhost:11434)".to_string(),
+///     setting_type: SettingType::Url {
+///         schemes: vec!["http".to_string(), "https".to_string()],
+///     },
+///     default: Some(json!("http://localhost:11434")),
+///     constraints: vec![Constraint::Required],
+///     visibility: Visibility::Public,
+///     group: Some("llm".to_string()),
+///     conditional: Some(ConditionalVisibility {
+///         base_setting: "llm.provider".to_string(),
+///         depends_on_value: "ollama".to_string(),
+///         applies_to_pattern: "llm.ollama.*".to_string(),
+///     }),
+/// };
+///
+/// // Advanced setting for power users
+/// let connection_pool_size = SettingMetadata {
+///     key: "database.connection_pool_size".to_string(),
+///     label: "Connection Pool Size".to_string(),
+///     description: "Maximum number of connections in the pool".to_string(),
+///     setting_type: SettingType::Integer {
+///         min: Some(1),
+///         max: Some(1000),
+///     },
+///     default: Some(json!(10)),
+///     constraints: vec![Constraint::Required],
+///     visibility: Visibility::Advanced,  // In "Advanced" section
+///     group: Some("database".to_string()),
+///     conditional: None,
+/// };
+/// ```
+///
+/// # Usage Patterns
+///
+/// Typically, you'd register metadata objects with a [`ConfigSchema`]:
+///
+/// ```ignore
+/// let mut schema = ConfigSchema::new("1.0", "my-app");
+/// schema.register(database_host);
+/// schema.register(database_password);
+/// schema.register(ollama_url);
+///
+/// // Export for tools
+/// let json_schema = schema.to_json_schema()?;
+/// let html_docs = schema.to_html()?;
+/// ```
 ///
 /// # Examples
 ///
 /// ```ignore
-/// use settings_loader::metadata::{SettingMetadata, SettingType, Visibility, Constraint};
+/// use settings_loader::metadata::{SettingMetadata, SettingType, Visibility};
 /// use serde_json::json;
 ///
 /// let metadata = SettingMetadata {
@@ -474,7 +846,121 @@ impl SettingMetadata {
 /// Complete schema for an application's settings
 ///
 /// Provides a comprehensive description of all configuration parameters,
-/// their types, constraints, defaults, and organization.
+/// their types, constraints, defaults, and organization. This is the top-level
+/// container for configuration metadata, enabling tools to generate documentation,
+/// JSON Schema, example configs, and dynamic UIs.
+///
+/// # Capabilities
+///
+/// - **Full Introspection**: Query any setting's metadata at runtime
+/// - **JSON Schema Export**: Generate JSON Schema for validation tools
+/// - **HTML Documentation**: Auto-generate formatted configuration reference
+/// - **Example Configs**: Create TOML/YAML examples with defaults and descriptions
+/// - **Type Information**: Preserve rich type hints for UI validation
+/// - **Conditional Logic**: Support plugin-based and feature-flag architectures
+///
+/// # Building a Schema
+///
+/// There are multiple ways to build a schema:
+///
+/// ```ignore
+/// use settings_loader::metadata::{ConfigSchema, SettingMetadata, SettingType};
+///
+/// // Method 1: Direct construction with all settings
+/// let schema = ConfigSchema {
+///     name: "my-app".to_string(),
+///     version: "1.0.0".to_string(),
+///     settings: vec![/* ... */],
+///     groups: vec![/* ... */],
+/// };
+///
+/// // Method 2: Using builder pattern (if available in your version)
+/// let mut schema = ConfigSchema {
+///     name: "my-app".to_string(),
+///     version: "1.0.0".to_string(),
+///     settings: vec![],
+///     groups: vec![],
+/// };
+/// schema.settings.push(/* ... */);
+/// ```
+///
+/// # Export Formats
+///
+/// Once you have a schema, you can export it for various tools:
+///
+/// ```ignore
+/// // Export as JSON Schema (for validation tools, IDE plugins, etc.)
+/// let json_schema = schema.to_json_schema();
+/// println!("{}", serde_json::to_string_pretty(&json_schema)?);
+///
+/// // Export as HTML documentation
+/// let html = schema.to_html();
+/// std::fs::write("config-reference.html", html)?;
+///
+/// // Export as example TOML config
+/// let example_toml = schema.to_example_toml();
+/// std::fs::write("example.toml", example_toml)?;
+/// ```
+///
+/// # Use Cases
+///
+/// - **Documentation Generation**: Create comprehensive configuration reference docs
+/// - **IDE Support**: Generate JSON Schema for VSCode/IDE validation and autocomplete
+/// - **Configuration UI**: Use metadata to build web-based or TUI config editors
+/// - **Validation**: Enforce constraints before loading configuration
+/// - **Scaffolding**: Generate example configs for new deployments
+/// - **Onboarding**: Help new users understand application configuration
+///
+/// # Real-World Example
+///
+/// ```ignore
+/// use settings_loader::metadata::{ConfigSchema, SettingMetadata, SettingType, Visibility, Constraint};
+/// use serde_json::json;
+///
+/// let mut schema = ConfigSchema {
+///     name: "my-app".to_string(),
+///     version: "1.0.0".to_string(),
+///     settings: vec![],
+///     groups: vec![],
+/// };
+///
+/// // Add server settings
+/// schema.settings.push(SettingMetadata {
+///     key: "server.host".to_string(),
+///     label: "Server Host".to_string(),
+///     description: "Hostname or IP to bind to".to_string(),
+///     setting_type: SettingType::String {
+///         pattern: None,
+///         min_length: Some(1),
+///         max_length: Some(255),
+///     },
+///     default: Some(json!("0.0.0.0")),
+///     constraints: vec![],
+///     visibility: Visibility::Public,
+///     group: Some("server".to_string()),
+///     conditional: None,
+/// });
+///
+/// schema.settings.push(SettingMetadata {
+///     key: "server.port".to_string(),
+///     label: "Server Port".to_string(),
+///     description: "Port to listen on (1024-65535)".to_string(),
+///     setting_type: SettingType::Integer {
+///         min: Some(1024),
+///         max: Some(65535),
+///     },
+///     default: Some(json!(8080)),
+///     constraints: vec![Constraint::Required],
+///     visibility: Visibility::Public,
+///     group: Some("server".to_string()),
+///     conditional: None,
+/// });
+///
+/// // Export to formats
+/// let json_schema_val = schema.to_json_schema();
+/// let html_doc = schema.to_html();
+/// let example_config = schema.to_example_toml();
+/// ```
 ///
 /// # Examples
 ///
@@ -498,6 +984,7 @@ impl SettingMetadata {
 ///             constraints: vec![],
 ///             visibility: Default::default(),
 ///             group: Some("api".to_string()),
+///             conditional: None,
 ///         },
 ///     ],
 ///     groups: vec![
@@ -2243,7 +2730,7 @@ mod tests {
             depends_on_value: "ollama".to_string(),
             applies_to_pattern: "llm.ollama.*".to_string(),
         };
-        
+
         assert!(rule.matches_pattern("llm.ollama.base_url"));
         assert!(rule.matches_pattern("llm.ollama.model"));
         assert!(!rule.matches_pattern("llm.openai.api_key"));
@@ -2258,7 +2745,7 @@ mod tests {
             depends_on_value: "enabled".to_string(),
             applies_to_pattern: "exact.key".to_string(),
         };
-        
+
         assert!(rule.matches_pattern("exact.key"));
         assert!(!rule.matches_pattern("exact.key.nested"));
         assert!(!rule.matches_pattern("exact"));
@@ -2282,7 +2769,7 @@ mod tests {
                 applies_to_pattern: "llm.ollama.*".to_string(),
             }),
         };
-        
+
         assert!(meta.conditional.is_some());
         let cond = meta.conditional.unwrap();
         assert_eq!(cond.base_setting, "llm.provider");

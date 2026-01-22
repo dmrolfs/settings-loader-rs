@@ -267,6 +267,7 @@ mod validation_tests {
             constraints: vec![Constraint::Required],
             visibility: Visibility::Public,
             group: Some("server".to_string()),
+            conditional: None,
         };
 
         assert!(metadata.validate(&json!(8080)).is_valid());
@@ -293,6 +294,7 @@ mod validation_tests {
                     constraints: vec![Constraint::Required],
                     visibility: Visibility::Public,
                     group: None,
+                    conditional: None,
                 },
                 SettingMetadata {
                     key: "port".to_string(),
@@ -303,6 +305,7 @@ mod validation_tests {
                     constraints: vec![],
                     visibility: Visibility::Public,
                     group: None,
+                    conditional: None,
                 },
             ],
             groups: vec![],
@@ -325,6 +328,7 @@ mod validation_tests {
             constraints: vec![Constraint::Required, Constraint::Range { min: 1.0, max: 300.0 }],
             visibility: Visibility::Public,
             group: None,
+            conditional: None,
         };
 
         let invalid_value = json!(-10);
@@ -350,6 +354,7 @@ mod validation_tests {
             constraints: vec![Constraint::Required],
             visibility: Visibility::Secret,
             group: None,
+            conditional: None,
         };
 
         // Valid API key (32 alphanumeric characters)
@@ -369,6 +374,7 @@ mod validation_tests {
             constraints: vec![],
             visibility: Visibility::Advanced,
             group: None,
+            conditional: None,
         };
 
         // Valid value at maximum - should pass validation
@@ -399,6 +405,7 @@ mod validation_tests {
             constraints: vec![Constraint::Required],
             visibility: Visibility::Public,
             group: Some("cluster".to_string()),
+            conditional: None,
         };
 
         // Valid cluster name - lowercase, digits, underscores, hyphens
@@ -427,6 +434,7 @@ mod validation_tests {
                     constraints: vec![Constraint::Required],
                     visibility: Visibility::Public,
                     group: Some("server".to_string()),
+                    conditional: None,
                 },
                 SettingMetadata {
                     key: "server.http.port".to_string(),
@@ -437,6 +445,7 @@ mod validation_tests {
                     constraints: vec![Constraint::Required],
                     visibility: Visibility::Public,
                     group: Some("server".to_string()),
+                    conditional: None,
                 },
                 SettingMetadata {
                     key: "database.connection_pool.min_size".to_string(),
@@ -447,6 +456,7 @@ mod validation_tests {
                     constraints: vec![],
                     visibility: Visibility::Advanced,
                     group: Some("database".to_string()),
+                    conditional: None,
                 },
                 SettingMetadata {
                     key: "logging.level".to_string(),
@@ -464,6 +474,7 @@ mod validation_tests {
                     constraints: vec![],
                     visibility: Visibility::Public,
                     group: Some("logging".to_string()),
+                    conditional: None,
                 },
             ],
             groups: vec![
@@ -588,6 +599,7 @@ mod validation_tests {
             constraints: vec![],
             visibility: Visibility::Public,
             group: None,
+            conditional: None,
         }];
 
         let setting_type = SettingType::Object { fields: inner_metadata };
@@ -606,6 +618,7 @@ mod validation_tests {
             constraints: vec![],
             visibility: Visibility::Public,
             group: None,
+            conditional: None,
         }];
 
         let setting_type = SettingType::Array {
@@ -633,6 +646,7 @@ mod validation_tests {
             constraints: vec![],
             visibility: Visibility::Public,
             group: None,
+            conditional: None,
         };
 
         let result = metadata.validate(&json!("invalid-email"));
@@ -655,6 +669,7 @@ mod validation_tests {
             constraints: vec![Constraint::Required, Constraint::Pattern("[A-Z0-9]+".to_string())],
             visibility: Visibility::Public,
             group: None,
+            conditional: None,
         };
 
         let result = metadata.validate(&json!("ab"));
@@ -675,6 +690,7 @@ mod validation_tests {
                 constraints: vec![],
                 visibility: Visibility::Public,
                 group: Some("database".to_string()),
+                conditional: None,
             }],
             groups: vec![SettingGroup {
                 name: "database".to_string(),
@@ -702,6 +718,7 @@ mod validation_tests {
             constraints: vec![],
             visibility: Visibility::Public,
             group: None,
+            conditional: None,
         };
 
         let result = metadata.validate(&json!(200));
@@ -724,6 +741,7 @@ mod validation_tests {
             constraints: vec![],
             visibility: Visibility::Public,
             group: None,
+            conditional: None,
         };
 
         // Test type mismatch - string where integer is required
@@ -748,6 +766,7 @@ mod validation_tests {
             constraints: vec![],
             visibility: Visibility::Public,
             group: None,
+            conditional: None,
         };
 
         // Empty string should fail min_length constraint
@@ -768,6 +787,7 @@ mod validation_tests {
             constraints: vec![],
             visibility: Visibility::Public,
             group: None,
+            conditional: None,
         };
 
         // Zero should be valid (minimum value)
@@ -786,6 +806,7 @@ mod validation_tests {
             constraints: vec![],
             visibility: Visibility::Public,
             group: None,
+            conditional: None,
         };
 
         // High precision values within range should be valid
@@ -810,6 +831,7 @@ mod validation_tests {
             constraints: vec![Constraint::Required, Constraint::Pattern("[0-9]{6}".to_string())],
             visibility: Visibility::Public,
             group: None,
+            conditional: None,
         };
 
         // Valid: 6 digits, matches pattern and length constraints
@@ -835,6 +857,7 @@ mod validation_tests {
             constraints: vec![Constraint::Pattern("^[a-zA-Z0-9]{32}$".to_string())],
             visibility: Visibility::Secret,
             group: None,
+            conditional: None,
         };
 
         let result = metadata.validate(&json!("not-long-enough-key-value"));
@@ -857,6 +880,7 @@ mod validation_tests {
             constraints: vec![],
             visibility: Visibility::Hidden,
             group: None,
+            conditional: None,
         };
 
         let result = metadata.validate(&json!(3));
@@ -878,6 +902,7 @@ mod validation_tests {
             constraints: vec![],
             visibility: Visibility::Public,
             group: None,
+            conditional: None,
         };
 
         let result = metadata.validate(&json!(500));
@@ -902,6 +927,7 @@ mod validation_tests {
             ])],
             visibility: Visibility::Secret,
             group: None,
+            conditional: None,
         };
 
         let result = metadata.validate(&json!("wrong-password-xyz"));
@@ -927,6 +953,7 @@ mod validation_tests {
             constraints: vec![Constraint::Required, Constraint::Pattern("[a-zA-Z0-9]{32}".to_string())],
             visibility: Visibility::Secret,
             group: None,
+            conditional: None,
         };
 
         let result = metadata.validate(&json!("short"));
@@ -961,6 +988,7 @@ mod validation_tests {
                     constraints: vec![Constraint::Required],
                     visibility: Visibility::Public,
                     group: Some("server.tls".to_string()),
+                    conditional: None,
                 },
                 SettingMetadata {
                     key: "server.tls.min_version".to_string(),
@@ -973,6 +1001,7 @@ mod validation_tests {
                     constraints: vec![],
                     visibility: Visibility::Public,
                     group: Some("server.tls".to_string()),
+                    conditional: None,
                 },
                 SettingMetadata {
                     key: "server.tls.cert_password".to_string(),
@@ -987,6 +1016,7 @@ mod validation_tests {
                     constraints: vec![Constraint::Required],
                     visibility: Visibility::Secret,
                     group: Some("server.tls".to_string()),
+                    conditional: None,
                 },
             ],
             groups: vec![],
@@ -1046,6 +1076,7 @@ mod validation_tests {
                 constraints: vec![],
                 visibility: Visibility::Public,
                 group: Some("broker".to_string()),
+                conditional: None,
             },
             SettingMetadata {
                 key: "broker.port".to_string(),
@@ -1056,6 +1087,7 @@ mod validation_tests {
                 constraints: vec![],
                 visibility: Visibility::Public,
                 group: Some("broker".to_string()),
+                conditional: None,
             },
             SettingMetadata {
                 key: "broker.max_retries".to_string(),
@@ -1066,6 +1098,7 @@ mod validation_tests {
                 constraints: vec![],
                 visibility: Visibility::Advanced,
                 group: Some("broker".to_string()),
+                conditional: None,
             },
         ];
 
@@ -1097,6 +1130,7 @@ mod validation_tests {
                 constraints: vec![],
                 visibility: Visibility::Public,
                 group: None,
+                conditional: None,
             };
 
             assert!(metadata.validate(&json!(value)).is_valid());
@@ -1121,6 +1155,7 @@ mod validation_tests {
                 constraints: vec![],
                 visibility: Visibility::Public,
                 group: None,
+                conditional: None,
             };
 
             assert!(metadata.validate(&json!(s)).is_valid());
@@ -1145,6 +1180,7 @@ mod validation_tests {
                 constraints: vec![],
                 visibility: Visibility::Public,
                 group: None,
+                conditional: None,
             };
 
             assert!(metadata.validate(&json!(s)).is_valid());
@@ -1185,6 +1221,7 @@ mod validation_tests {
             ],
             visibility: Visibility::Secret,
             group: Some("llm".to_string()),
+            conditional: None,
         }
     }
 
@@ -1206,6 +1243,7 @@ mod validation_tests {
             ],
             visibility: Visibility::Secret,
             group: Some("llm".to_string()),
+            conditional: None,
         }
     }
 
@@ -1224,6 +1262,7 @@ mod validation_tests {
             constraints: vec![Constraint::Required],
             visibility: Visibility::Secret,
             group: Some("database".to_string()),
+            conditional: None,
         }
     }
 
@@ -1246,6 +1285,7 @@ mod validation_tests {
             ])],
             visibility: Visibility::Public,
             group: Some("tui".to_string()),
+            conditional: None,
         }
     }
 
@@ -1260,6 +1300,7 @@ mod validation_tests {
             constraints: vec![],
             visibility: Visibility::Public,
             group: Some("output".to_string()),
+            conditional: None,
         }
     }
 
@@ -1282,6 +1323,7 @@ mod validation_tests {
             ])],
             visibility: Visibility::Public,
             group: Some("llm".to_string()),
+            conditional: None,
         }
     }
 
@@ -2225,6 +2267,7 @@ mod validation_tests {
             constraints: vec![Constraint::Required],
             visibility: Visibility::Public,
             group: None,
+            conditional: None,
         };
 
         let port_metadata = SettingMetadata {
@@ -2236,6 +2279,7 @@ mod validation_tests {
             constraints: vec![Constraint::Required],
             visibility: Visibility::Public,
             group: None,
+            conditional: None,
         };
 
         let max_conn_metadata = SettingMetadata {
@@ -2247,6 +2291,7 @@ mod validation_tests {
             constraints: vec![],
             visibility: Visibility::Public,
             group: None,
+            conditional: None,
         };
 
         // Validate all composed values

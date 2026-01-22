@@ -19,6 +19,7 @@ fn test_json_schema_generation() {
                 constraints: vec![Constraint::Required],
                 visibility: Visibility::Public,
                 group: None,
+                conditional: None,
             },
             SettingMetadata {
                 key: "database.host".to_string(),
@@ -29,6 +30,7 @@ fn test_json_schema_generation() {
                 constraints: vec![],
                 visibility: Visibility::Public,
                 group: Some("database".to_string()),
+                conditional: None,
             },
         ],
         groups: vec![],
@@ -63,6 +65,7 @@ fn test_html_generation() {
             constraints: vec![Constraint::Required],
             visibility: Visibility::Public,
             group: None,
+            conditional: None,
         }],
         groups: vec![],
     };
@@ -88,6 +91,7 @@ fn test_toml_example_generation() {
             constraints: vec![],
             visibility: Visibility::Public,
             group: Some("database".to_string()),
+            conditional: None,
         }],
         groups: vec![],
     };
@@ -113,6 +117,7 @@ fn test_export_methods() {
             constraints: vec![],
             visibility: Visibility::Public,
             group: None,
+            conditional: None,
         }],
         groups: vec![],
     };

@@ -618,6 +618,100 @@ let user_settings = sources.all_from_scope(ConfigScope::UserGlobal);
 
 See [`examples/provenance_audit.rs`](examples/provenance_audit.rs) for a complete example.
 
+### Metadata & Introspection
+
+The metadata system enables runtime introspection of your configuration schema, opening the door to dynamic UIs, validation, and documentation generation.
+
+**Visibility Control**: Mark settings for different audiences—public for basic users, advanced for power users, secret for sensitive credentials.
+
+```rust
+use settings_loader::metadata::{SettingMetadata, SettingType, Visibility, Constraint};
+use serde_json::json;
+
+let metadata = SettingMetadata {
+    key: "database.password".to_string(),
+    label: "Database Password".to_string(),
+    description: "PostgreSQL connection password".to_string(),
+    setting_type: SettingType::String {
+        pattern: None,
+        min_length: Some(8),
+        max_length: Some(128),
+    },
+    default: None,
+    constraints: vec![Constraint::Required],
+    visibility: Visibility::Secret,  // Redacted in UI
+    group: Some("database".to_string()),
+    conditional: None,
+};
+```
+
+**Conditional Visibility**: Show settings only when specific conditions are met. Useful for plugin-based architectures or feature flags.
+
+```rust
+use settings_loader::metadata::{ConditionalVisibility, SettingMetadata};
+
+let ollama_settings = SettingMetadata {
+    key: "llm.ollama.base_url".to_string(),
+    label: "Ollama Base URL".to_string(),
+    description: "URL to local Ollama instance".to_string(),
+    // ... other fields ...
+    
+    // Only show this setting when llm.provider == "ollama"
+    conditional: Some(ConditionalVisibility {
+        base_setting: "llm.provider".to_string(),
+        depends_on_value: "ollama".to_string(),
+        applies_to_pattern: "llm.ollama.*".to_string(),
+    }),
+};
+```
+
+**Constraints & Validation**: Declare advanced validation rules that can be enforced at load time or used to guide UI validation.
+
+```rust
+use settings_loader::metadata::Constraint;
+
+let constraints = vec![
+    Constraint::Required,
+    Constraint::Range { min: 1.0, max: 65535.0 },  // Port number
+    Constraint::Length { min: 1, max: 255 },        // String length
+    Constraint::Pattern("[a-zA-Z0-9._-]+".to_string()),  // Regex
+    Constraint::OneOf(vec!["dev".to_string(), "staging".to_string(), "prod".to_string()]),
+    Constraint::Custom("must_be_even".to_string()),  // Application-specific
+];
+```
+
+**Schema Generation**: Export your entire configuration schema for documentation and tooling.
+
+```rust
+use settings_loader::metadata::ConfigSchema;
+
+let schema = ConfigSchema {
+    version: "1.0".to_string(),
+    application: "my-app".to_string(),
+    settings: vec![/* metadata objects */],
+    groups: vec![/* setting groups */],
+};
+
+// Generate JSON Schema for tooling
+let json_schema = schema.to_json_schema()?;
+
+// Generate HTML documentation
+let html_docs = schema.to_html()?;
+
+// Generate example TOML config
+let example_toml = schema.to_example_toml()?;
+```
+
+**Use Cases**:
+- Building TUI/CLI settings editors from metadata
+- Generating user documentation from schema
+- Creating validation schemas for external tools
+- Building web-based configuration UI
+- Enforcing business rules on configuration values
+- Understanding configuration structure at runtime
+
+See [`examples/schema_generation.rs`](examples/schema_generation.rs) for a complete example.
+
 ---
 
 ## Common Patterns

@@ -358,6 +358,7 @@ mod core_metadata_tests {
                 constraints: vec![],
                 visibility: Visibility::Public,
                 group: None,
+                conditional: None,
             })
             .collect();
 
@@ -379,6 +380,7 @@ mod core_metadata_tests {
             constraints: vec![],
             visibility: Visibility::Public,
             group: None,
+            conditional: None,
         };
 
         assert!(metadata.default.is_none());
@@ -396,6 +398,7 @@ mod core_metadata_tests {
             constraints: vec![],
             visibility: Visibility::Public,
             group: None,
+            conditional: None,
         };
 
         assert_eq!(metadata.default, None);
@@ -413,6 +416,7 @@ mod core_metadata_tests {
                 constraints: vec![],
                 visibility: if i % 2 == 0 { Visibility::Public } else { Visibility::Hidden },
                 group: Some(format!("group_{}", i % 5)),
+                conditional: None,
             })
             .collect();
 

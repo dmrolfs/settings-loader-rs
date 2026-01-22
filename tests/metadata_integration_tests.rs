@@ -61,6 +61,7 @@ mod metadata_integration_tests {
                         constraints: vec![],
                         visibility: Visibility::Public,
                         group: Some("logging".to_string()),
+                        conditional: None,
                     },
                     SettingMetadata {
                         key: "max_retries".to_string(),
@@ -71,6 +72,7 @@ mod metadata_integration_tests {
                         constraints: vec![Constraint::Required],
                         visibility: Visibility::Public,
                         group: Some("retry_policy".to_string()),
+                        conditional: None,
                     },
                 ],
                 groups: vec![
@@ -113,6 +115,7 @@ mod metadata_integration_tests {
                         constraints: vec![Constraint::Required],
                         visibility: Visibility::Public,
                         group: Some("database".to_string()),
+                        conditional: None,
                     },
                     SettingMetadata {
                         key: "db_port".to_string(),
@@ -123,6 +126,7 @@ mod metadata_integration_tests {
                         constraints: vec![Constraint::Range { min: 1.0, max: 65535.0 }],
                         visibility: Visibility::Public,
                         group: Some("database".to_string()),
+                        conditional: None,
                     },
                     SettingMetadata {
                         key: "db_password".to_string(),
@@ -133,6 +137,7 @@ mod metadata_integration_tests {
                         constraints: vec![Constraint::Required],
                         visibility: Visibility::Secret,
                         group: Some("database".to_string()),
+                        conditional: None,
                     },
                     SettingMetadata {
                         key: "max_connections".to_string(),
@@ -143,6 +148,7 @@ mod metadata_integration_tests {
                         constraints: vec![],
                         visibility: Visibility::Public,
                         group: Some("database".to_string()),
+                        conditional: None,
                     },
                 ],
                 groups: vec![SettingGroup {
@@ -180,6 +186,7 @@ mod metadata_integration_tests {
                         constraints: vec![Constraint::Required],
                         visibility: Visibility::Public,
                         group: Some("api".to_string()),
+                        conditional: None,
                     },
                     SettingMetadata {
                         key: "api_key".to_string(),
@@ -190,6 +197,7 @@ mod metadata_integration_tests {
                         constraints: vec![Constraint::Required],
                         visibility: Visibility::Secret,
                         group: Some("api".to_string()),
+                        conditional: None,
                     },
                     SettingMetadata {
                         key: "api_timeout_secs".to_string(),
@@ -200,6 +208,7 @@ mod metadata_integration_tests {
                         constraints: vec![],
                         visibility: Visibility::Public,
                         group: Some("api".to_string()),
+                        conditional: None,
                     },
                     SettingMetadata {
                         key: "enable_caching".to_string(),
@@ -210,6 +219,7 @@ mod metadata_integration_tests {
                         constraints: vec![],
                         visibility: Visibility::Advanced,
                         group: Some("cache".to_string()),
+                        conditional: None,
                     },
                     SettingMetadata {
                         key: "cache_ttl_seconds".to_string(),
@@ -220,6 +230,7 @@ mod metadata_integration_tests {
                         constraints: vec![],
                         visibility: Visibility::Advanced,
                         group: Some("cache".to_string()),
+                        conditional: None,
                     },
                 ],
                 groups: vec![
