@@ -479,6 +479,7 @@ mod tests {
             constraints: vec![Constraint::Required],
             visibility: Visibility::Public,
             group: Some("api".to_string()),
+            conditional: None,
         }
     }
 
@@ -503,6 +504,7 @@ mod tests {
                         constraints: vec![Constraint::Required],
                         visibility: Visibility::Public,
                         group: Some("database".to_string()),
+                        conditional: None,
                     },
                     SettingMetadata {
                         key: "database.port".to_string(),
@@ -513,6 +515,7 @@ mod tests {
                         constraints: vec![Constraint::Range { min: 1.0, max: 65535.0 }],
                         visibility: Visibility::Public,
                         group: Some("database".to_string()),
+                        conditional: None,
                     },
                     SettingMetadata {
                         key: "database.password".to_string(),
@@ -523,6 +526,7 @@ mod tests {
                         constraints: vec![Constraint::Required],
                         visibility: Visibility::Secret,
                         group: Some("database".to_string()),
+                        conditional: None,
                     },
                 ],
             },
@@ -530,6 +534,7 @@ mod tests {
             constraints: vec![],
             visibility: Visibility::Public,
             group: Some("database".to_string()),
+            conditional: None,
         }
     }
 
@@ -562,6 +567,7 @@ mod tests {
                 constraints: if i % 5 == 0 { vec![Constraint::Required] } else { vec![] },
                 visibility,
                 group: Some(group_name.to_string()),
+                conditional: None,
             });
         }
 
@@ -635,6 +641,7 @@ mod tests {
                         constraints: vec![Constraint::Required],
                         visibility: Visibility::Public,
                         group: Some("api".to_string()),
+                        conditional: None,
                     },
                     SettingMetadata {
                         key: "api_key".to_string(),
@@ -645,6 +652,7 @@ mod tests {
                         constraints: vec![Constraint::Required],
                         visibility: Visibility::Secret,
                         group: Some("api".to_string()),
+                        conditional: None,
                     },
                 ],
                 groups: vec![SettingGroup {
@@ -1632,6 +1640,7 @@ mod tests {
             constraints: vec![],
             visibility: Visibility::Public,
             group: None,
+            conditional: None,
         };
 
         let schema = ConfigSchema {

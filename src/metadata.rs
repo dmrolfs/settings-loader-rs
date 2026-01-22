@@ -351,8 +351,8 @@ impl ConditionalVisibility {
     pub fn matches_pattern(&self, key: &str) -> bool {
         if self.applies_to_pattern.ends_with(".*") {
             let prefix = &self.applies_to_pattern[..self.applies_to_pattern.len() - 2];
-            // Key must start with prefix, and have a dot immediately after
-            key.starts_with(prefix) && (key == prefix || key[prefix.len()..].starts_with('.'))
+            // Key must start with prefix, have more content, and start with a dot
+            key.starts_with(prefix) && key.len() > prefix.len() && key[prefix.len()..].starts_with('.')
         } else {
             // Exact match for non-wildcard patterns
             key == &self.applies_to_pattern
@@ -853,6 +853,7 @@ mod tests {
                 constraints: vec![Constraint::Required],
                 visibility: Visibility::Public,
                 group: None,
+                conditional: None,
             }],
         };
         let schema = st.to_json_schema();
@@ -880,6 +881,7 @@ mod tests {
             ],
             visibility: Visibility::Secret,
             group: None,
+            conditional: None,
         };
 
         let schema = meta.to_json_schema();
@@ -909,6 +911,7 @@ mod tests {
                     constraints: vec![Constraint::Required],
                     visibility: Visibility::Public,
                     group: None,
+                    conditional: None,
                 },
                 SettingMetadata {
                     key: "db.port".into(),
@@ -919,6 +922,7 @@ mod tests {
                     constraints: vec![],
                     visibility: Visibility::Public,
                     group: None,
+                    conditional: None,
                 },
             ],
             groups: vec![],
@@ -947,6 +951,7 @@ mod tests {
                 constraints: vec![Constraint::Required],
                 visibility: Visibility::Secret,
                 group: Some("Security".into()),
+                conditional: None,
             }],
             groups: vec![SettingGroup {
                 name: "Security".into(),
@@ -980,6 +985,7 @@ mod tests {
                     constraints: vec![Constraint::Required],
                     visibility: Visibility::Public,
                     group: None,
+                    conditional: None,
                 },
                 SettingMetadata {
                     key: "debug".into(),
@@ -990,6 +996,7 @@ mod tests {
                     constraints: vec![],
                     visibility: Visibility::Public,
                     group: None,
+                    conditional: None,
                 },
             ],
             groups: vec![],
@@ -1331,6 +1338,7 @@ mod tests {
                 constraints: vec![],
                 visibility: Visibility::Public,
                 group: None,
+                conditional: None,
             }],
         };
         let schema = st.to_json_schema();
@@ -1351,6 +1359,7 @@ mod tests {
                 constraints: vec![Constraint::Required],
                 visibility: Visibility::Public,
                 group: None,
+                conditional: None,
             }],
         };
         let schema = st.to_json_schema();
@@ -1371,6 +1380,7 @@ mod tests {
                     constraints: vec![Constraint::Required],
                     visibility: Visibility::Public,
                     group: None,
+                    conditional: None,
                 },
                 SettingMetadata {
                     key: "optional".to_string(),
@@ -1381,6 +1391,7 @@ mod tests {
                     constraints: vec![],
                     visibility: Visibility::Public,
                     group: None,
+                    conditional: None,
                 },
             ],
         };
@@ -1410,6 +1421,7 @@ mod tests {
             constraints: vec![Constraint::Required],
             visibility: Visibility::Public,
             group: None,
+            conditional: None,
         };
         assert!(meta.is_required());
     }
@@ -1425,6 +1437,7 @@ mod tests {
             constraints: vec![],
             visibility: Visibility::Public,
             group: None,
+            conditional: None,
         };
         assert!(!meta.is_required());
     }
@@ -1444,6 +1457,7 @@ mod tests {
             ],
             visibility: Visibility::Public,
             group: None,
+            conditional: None,
         };
         assert!(meta.is_required());
     }
@@ -1459,6 +1473,7 @@ mod tests {
             constraints: vec![],
             visibility: Visibility::Public,
             group: None,
+            conditional: None,
         };
         let schema = meta.to_json_schema();
         assert_eq!(schema["type"], "boolean");
@@ -1481,6 +1496,7 @@ mod tests {
             constraints: vec![Constraint::Required, Constraint::Pattern("[a-z]+".to_string())],
             visibility: Visibility::Secret,
             group: Some("group1".to_string()),
+            conditional: None,
         };
         let schema = meta.to_json_schema();
         assert_eq!(schema["type"], "string");
@@ -1503,6 +1519,7 @@ mod tests {
             constraints: vec![Constraint::Range { min: 1024.0, max: 65535.0 }],
             visibility: Visibility::Public,
             group: None,
+            conditional: None,
         };
         let schema = meta.to_json_schema();
         assert_eq!(schema["type"], "integer");
@@ -1522,6 +1539,7 @@ mod tests {
             constraints: vec![Constraint::Length { min: 3, max: 20 }],
             visibility: Visibility::Public,
             group: None,
+            conditional: None,
         };
         let schema = meta.to_json_schema();
         assert_eq!(schema["minLength"], 3);
@@ -1543,6 +1561,7 @@ mod tests {
             ])],
             visibility: Visibility::Public,
             group: None,
+            conditional: None,
         };
         let schema = meta.to_json_schema();
         assert_eq!(schema["enum"], json!(["dev", "staging", "prod"]));
@@ -1560,6 +1579,7 @@ mod tests {
             constraints: vec![Constraint::Required],
             visibility: Visibility::Secret,
             group: Some("group".to_string()),
+            conditional: None,
         };
         let meta2 = meta1.clone();
         assert_eq!(meta1, meta2);
@@ -1576,6 +1596,7 @@ mod tests {
             constraints: vec![],
             visibility: Visibility::Public,
             group: None,
+            conditional: None,
         };
         let meta2 = SettingMetadata {
             key: "test".to_string(),
@@ -1586,6 +1607,7 @@ mod tests {
             constraints: vec![],
             visibility: Visibility::Public,
             group: None,
+            conditional: None,
         };
         assert_eq!(meta1, meta2);
     }
@@ -1601,6 +1623,7 @@ mod tests {
             constraints: vec![],
             visibility: Visibility::Public,
             group: None,
+            conditional: None,
         };
         let meta2 = SettingMetadata {
             key: "test2".to_string(),
@@ -1611,6 +1634,7 @@ mod tests {
             constraints: vec![],
             visibility: Visibility::Public,
             group: None,
+            conditional: None,
         };
         assert_ne!(meta1, meta2);
     }
@@ -1704,6 +1728,7 @@ mod tests {
                 constraints: vec![],
                 visibility: Visibility::Public,
                 group: None,
+                conditional: None,
             }],
             groups: vec![],
         };
@@ -1726,6 +1751,7 @@ mod tests {
                 constraints: vec![],
                 visibility: Visibility::Public,
                 group: None,
+                conditional: None,
             }],
             groups: vec![],
         };
@@ -1757,6 +1783,7 @@ mod tests {
                     constraints: vec![Constraint::Required],
                     visibility: Visibility::Public,
                     group: None,
+                    conditional: None,
                 },
                 SettingMetadata {
                     key: "optional_setting".to_string(),
@@ -1767,6 +1794,7 @@ mod tests {
                     constraints: vec![],
                     visibility: Visibility::Public,
                     group: None,
+                    conditional: None,
                 },
             ],
             groups: vec![],
@@ -1790,6 +1818,7 @@ mod tests {
                     constraints: vec![],
                     visibility: Visibility::Public,
                     group: None,
+                    conditional: None,
                 },
                 SettingMetadata {
                     key: "db.host".to_string(),
@@ -1800,6 +1829,7 @@ mod tests {
                     constraints: vec![],
                     visibility: Visibility::Public,
                     group: None,
+                    conditional: None,
                 },
             ],
             groups: vec![],
@@ -1845,6 +1875,7 @@ mod tests {
                 constraints: vec![Constraint::Required],
                 visibility: Visibility::Secret,
                 group: None,
+                conditional: None,
             }],
             groups: vec![],
         };
@@ -1871,6 +1902,7 @@ mod tests {
                     constraints: vec![],
                     visibility: Visibility::Public,
                     group: Some("group1".to_string()),
+                    conditional: None,
                 },
                 SettingMetadata {
                     key: "setting2".to_string(),
@@ -1881,6 +1913,7 @@ mod tests {
                     constraints: vec![],
                     visibility: Visibility::Public,
                     group: Some("group2".to_string()),
+                    conditional: None,
                 },
             ],
             groups: vec![
@@ -1919,6 +1952,7 @@ mod tests {
                 constraints: vec![],
                 visibility: Visibility::Public,
                 group: None,
+                conditional: None,
             }],
             groups: vec![],
         };
@@ -1958,6 +1992,7 @@ mod tests {
                     constraints: vec![],
                     visibility: Visibility::Public,
                     group: None,
+                    conditional: None,
                 },
                 SettingMetadata {
                     key: "timeout".to_string(),
@@ -1968,6 +2003,7 @@ mod tests {
                     constraints: vec![],
                     visibility: Visibility::Public,
                     group: None,
+                    conditional: None,
                 },
             ],
             groups: vec![],
@@ -1994,6 +2030,7 @@ mod tests {
                     constraints: vec![],
                     visibility: Visibility::Public,
                     group: None,
+                    conditional: None,
                 },
                 SettingMetadata {
                     key: "db.port".to_string(),
@@ -2004,6 +2041,7 @@ mod tests {
                     constraints: vec![],
                     visibility: Visibility::Public,
                     group: None,
+                    conditional: None,
                 },
             ],
             groups: vec![],
@@ -2029,6 +2067,7 @@ mod tests {
                     constraints: vec![],
                     visibility: Visibility::Public,
                     group: None,
+                    conditional: None,
                 },
                 SettingMetadata {
                     key: "debug".to_string(),
@@ -2039,6 +2078,7 @@ mod tests {
                     constraints: vec![],
                     visibility: Visibility::Public,
                     group: None,
+                    conditional: None,
                 },
                 SettingMetadata {
                     key: "db.host".to_string(),
@@ -2049,6 +2089,7 @@ mod tests {
                     constraints: vec![],
                     visibility: Visibility::Public,
                     group: None,
+                    conditional: None,
                 },
             ],
             groups: vec![],
@@ -2073,6 +2114,7 @@ mod tests {
                 constraints: vec![Constraint::Required],
                 visibility: Visibility::Public,
                 group: None,
+                conditional: None,
             }],
             groups: vec![],
         };
@@ -2097,6 +2139,7 @@ mod tests {
                     constraints: vec![],
                     visibility: Visibility::Public,
                     group: None,
+                    conditional: None,
                 },
                 SettingMetadata {
                     key: "ratio".to_string(),
@@ -2107,6 +2150,7 @@ mod tests {
                     constraints: vec![],
                     visibility: Visibility::Public,
                     group: None,
+                    conditional: None,
                 },
                 SettingMetadata {
                     key: "flags".to_string(),
@@ -2125,6 +2169,7 @@ mod tests {
                     constraints: vec![],
                     visibility: Visibility::Public,
                     group: None,
+                    conditional: None,
                 },
             ],
             groups: vec![],
@@ -2149,6 +2194,7 @@ mod tests {
                 constraints: vec![],
                 visibility: Visibility::Public,
                 group: None,
+                conditional: None,
             }],
             groups: vec![],
         };

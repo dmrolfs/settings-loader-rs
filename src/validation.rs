@@ -1578,6 +1578,7 @@ mod tests {
             constraints: vec![],
             visibility: Visibility::Public,
             group: None,
+            conditional: None,
         };
         let st = SettingType::Object { fields: vec![field] };
         let value = serde_json::json!({ "name": "John" });
@@ -1640,6 +1641,7 @@ mod tests {
             constraints: vec![Constraint::Required],
             visibility: Visibility::Public,
             group: None,
+            conditional: None,
         };
 
         assert!(metadata.validate_value(&serde_json::json!(8080)).is_ok());
@@ -1658,6 +1660,7 @@ mod tests {
             constraints: vec![Constraint::Required],
             visibility: Visibility::Secret,
             group: None,
+            conditional: None,
         };
 
         let result = metadata.validate(&serde_json::json!(null));
