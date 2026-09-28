@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-28
+
+### Added
+- **`EnvironmentLabel`**: a normalized, open deployment-environment label with a locality
+  predicate (`is_local()`/`requires_production_strictness()`), additive alongside `Environment`.
+  `Environment` is this crate's config-layer-selection key (`SettingsLoader::load_implicit` picks
+  `./config/<environment>.*` files by it) and stays exactly that. `EnvironmentLabel` answers a
+  different, equally common question -- "is this deployment the one class in which permissive,
+  non-secret defaults are acceptable, or is it one of the others?" -- without forcing every real
+  deployment topology into a closed two-value enum. Real fleets commonly run more than two named
+  environments (`staging-us`, `staging-eu`, one per isolated tenant, ...); a closed
+  `{Local, Production}`-shaped type would collapse all of those into a single generic label,
+  destroying the operator's actual environment identity at the exact point it's resolved. Any
+  declared string is a valid label -- normalization is limited to trimming and lowercasing, never
+  a word-boundary case conversion, and there is no rejection path (`FromStr::Err = Infallible`).
+  Mirrors the case-insensitive whole-token comparison convention .NET's `IHostEnvironment` uses.
+  Deliberately does no I/O of its own -- reading the raw environment variable stays each
+  consumer's own responsibility, through whatever seam that consumer already uses for testable
+  environment-variable access.
+
 ## [1.1.0] - 2026-09-28
 
 ### Fixed

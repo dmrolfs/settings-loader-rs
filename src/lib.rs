@@ -64,6 +64,7 @@
 //! ```
 
 pub use environment::Environment;
+pub use environment_label::EnvironmentLabel;
 pub use error::SettingsError;
 pub use layer::{ConfigLayer, LayerBuilder};
 pub use loading_options::{LoadingOptions, MultiScopeConfig, NoOptions};
@@ -72,6 +73,7 @@ pub use settings_loader::SettingsLoader;
 
 pub mod common;
 pub mod environment;
+pub mod environment_label;
 pub mod error;
 pub mod layer;
 pub mod loading_options;
