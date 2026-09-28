@@ -73,7 +73,6 @@ pub use settings_loader::SettingsLoader;
 pub mod common;
 pub mod environment;
 pub mod error;
-mod internals;
 pub mod layer;
 pub mod loading_options;
 pub mod provenance;

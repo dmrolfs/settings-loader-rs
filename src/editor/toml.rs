@@ -121,12 +121,9 @@ impl TomlLayerEditor {
         let current_table = if parent_path.is_empty() {
             doc.as_table_mut()
         } else {
-            match Self::get_item_mut(&mut doc, &parent_path) {
-                Ok(item) => item
-                    .as_table_mut()
-                    .ok_or_else(|| EditorError::InvalidPath(format!("Parent path '{}' is not a table", parent_path)))?,
-                Err(e) => return Err(e),
-            }
+            let item = Self::get_item_mut(&mut doc, &parent_path)?;
+            item.as_table_mut()
+                .ok_or_else(|| EditorError::InvalidPath(format!("Parent path '{}' is not a table", parent_path)))?
         };
 
         if current_table.remove(target_key).is_some() {

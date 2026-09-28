@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-28
+
+### Fixed
+- **`Environment` case normalization**: `Environment::from(&str)` no longer applies a
+  word-boundary case conversion (`RenameRule::KebabCase`) to its input. That conversion is
+  designed for compound Rust identifiers (`VeryTasty` -> `very_tasty`), not for a free-form,
+  human-typed environment label -- applied to an all-caps value such as `"PRODUCTION"`, it
+  inserted a separator before every letter, producing `"p-r-o-d-u-c-t-i-o-n"`, which then failed
+  to equal `environment::PRODUCTION`. `Environment` now normalizes with a plain
+  `trim().to_ascii_lowercase()`: any casing of the same word (`local`, `LOCAL`, `Local`, `lOcAl`)
+  normalizes to the same canonical value, and any separator style already present in the input
+  is preserved verbatim rather than re-derived from capitalization. This matches the
+  case-insensitive whole-token comparison convention used by, e.g., .NET's `IHostEnvironment`.
+  **Behavior change**: a compound label typed in PascalCase (e.g. `"StagingAwsUsWest2"`) is now
+  lowercased verbatim (`"stagingawsuswest2"`) rather than split into hyphenated words
+  (`"staging-aws-us-west2"`); write compound labels with your own separators
+  (`"staging-aws-us-west2"`) if that form is wanted.
+- **Clippy**: simplified a `match` over `Result` in `TomlLayerEditor` that clippy flagged as
+  better expressed with the `?` operator directly.
+
+### Removed
+- **Internal**: deleted the now-unused `internals::case`/`RenameRule` module. It existed solely
+  to support the old `Environment` normalization above; nothing else in the crate used it.
+
 ## [1.0.0] - 2026-01-06
 
 ### Added
