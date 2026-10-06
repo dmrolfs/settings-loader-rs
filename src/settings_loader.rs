@@ -58,6 +58,29 @@ type ConfigFile = config::File<config::FileSourceFile, config::FileFormat>;
 /// println!("{:?}", settings);
 /// ```
 ///
+/// # Security: this crate never Debug-dumps your settings or your merged configuration
+///
+/// As of 1.2.1, no loader in this trait (`load`, `load_implicit`, or any sibling) logs the
+/// merged `config::Config` or the fully-deserialized `Self` at any point. Earlier releases did
+/// (`tracing::info!(?config, "configuration loaded")` and
+/// `tracing::info!(?settings, "settings built for application.")`): the first printed every
+/// merged source -- including a secrets file -- as raw, untyped plaintext unconditionally; the
+/// second was only as safe as every field in every implementor's own struct happened to be
+/// typed, which this crate has no way to verify or enforce from outside. Both are gone. If you
+/// want to log the loaded settings, do it in your own code, after `load`/`load_implicit`
+/// returns, where you control exactly which fields are safe to show -- this crate will not do
+/// it for you, by design, so that no future instrumentation added to this crate can reintroduce
+/// a leak path your own types did not consent to.
+///
+/// One residual surface this crate does not control: `#[tracing::instrument]` captures every
+/// function argument -- including `options: &Self::Options` -- as span fields by default,
+/// using their own `Debug` impl, visible in every nested log line's span context for the
+/// lifetime of the call. In practice `Self::Options` holds *paths* (to a config file, a
+/// secrets file), not resolved secret *values* -- every implementor in this crate's own test
+/// suite follows that shape. If your own `Options` type embeds a raw secret value directly
+/// (rather than a path to one), give that field a redacting `Debug` impl
+/// (`secrecy::SecretString`/`SecretBox<str>`, or an equivalent newtype) for the same reason you
+/// would in `Self` itself.
 pub trait SettingsLoader: Debug + Sized {
     /// The options type that specifies how settings are loaded.
     type Options: LoadingOptions + Debug;
@@ -235,10 +258,20 @@ pub trait SettingsLoader: Debug + Sized {
             .load_overrides(builder)
             .map_err(|err| SettingsError::CliOption(err.into()))?;
 
+        // Deliberately NOT logged, either here or on `settings` below: the merged
+        // `config::Config` holds every source -- including the secrets file -- as plain,
+        // untyped strings, before `try_deserialize` ever converts it into `Self`'s own typed
+        // fields; and blanket-`Debug`-dumping the deserialized `settings` is only as safe as
+        // every implementor's own field types happen to be, which this crate cannot verify or
+        // enforce from outside. A prior release logged both at `info`
+        // (`tracing::info!(?config, ...)` and `tracing::info!(?settings, ...)`), the first
+        // printing raw plaintext unconditionally, the second leaking any field an implementor
+        // had not wrapped in a redacting type (`secrecy::SecretString` or equivalent) -- fixed
+        // in 1.2.1 by removing both. See this trait's own "Security" section above: logging the
+        // final settings safely, if wanted, is the caller's own responsibility, in the caller's
+        // own code, where the caller controls exactly which fields are safe to show.
         let config = builder.build()?;
-        tracing::info!(?config, "configuration loaded");
         let settings = config.try_deserialize()?;
-        tracing::info!(?settings, "settings built for application.");
         Ok(settings)
     }
 

@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-10-06
+
+### Fixed
+- **Security: `load_implicit` no longer logs raw configuration or settings data.** Removed
+  two `tracing::info!` calls that debug-dumped, at `info` level, data this crate has no way to
+  know is safe to print: `tracing::info!(?config, "configuration loaded")` logged the fully
+  merged `config::Config` -- every source, including a secrets file, as plain, untyped
+  strings, before `try_deserialize` ever converts it into the caller's own typed `Self` --
+  unconditionally, regardless of how carefully the caller's own struct typed its secret
+  fields. `tracing::info!(?settings, "settings built for application.")` logged the final,
+  deserialized `Self` and was only as safe as every field in the caller's own struct happened
+  to be -- a bare `String` for a `database_url` or similar leaked in full. A real credential,
+  loaded through `secrets_path()` by a downstream application, was printed in full to that
+  application's own production logs by the first of these two calls; found live, not in a
+  test. Both calls are now removed entirely -- this crate logs neither the merged
+  configuration nor the final settings at any point in `load`/`load_implicit`. Logging the
+  loaded settings, if wanted, is now the caller's own responsibility, in the caller's own
+  code, where the caller controls exactly which fields are safe to show; see
+  `SettingsLoader`'s own "Security" doc section for the full reasoning and the one residual
+  surface this crate does not control (`#[tracing::instrument]`'s default argument capture).
+  Regression test: `tests/secrets_not_logged_tests.rs`.
+
 ## [1.2.0] - 2026-09-28
 
 ### Added
