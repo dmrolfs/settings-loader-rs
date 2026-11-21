@@ -1,6 +1,6 @@
 [package]
 name = "settings_loader"
-version = "1.2.1"
+version = "2.0.0"
 edition = "2021"
 authors = ["Damon Rolfs <drolfs@gmail.com>"]
 description = "Opinionated configuration settings load mechanism for Rust applications"
@@ -56,7 +56,7 @@ tracing = "^0.1.44"
 tracing-bunyan-formatter = "^0.3.10"
 tracing-log = "^0.2.0"
 tracing-subscriber = { version = "^0.3.22", features = ["env-filter"] }
-sqlx = { version = "^0.8.6", default-features = false, features = ["postgres", "runtime-tokio-rustls"], optional = true }
+sqlx = { version = "^0.9.1", default-features = false, features = ["postgres", "runtime-tokio", "tls-rustls"], optional = true }
 url = { version = "^2.5.7", optional = true }
 zeroize = { version = "^1.8.2", optional = true }
 

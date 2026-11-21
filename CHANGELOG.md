@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-11-21
+
+### Changed
+- **Breaking:** upgrade the optional `sqlx` dependency (the `database` feature) from 0.8 to 0.9.
+  `DatabaseSettings::pg_pool_options` and `pg_connect_options_*` return the SQLx 0.9 `PgPoolOptions` and `PgConnectOptions`, so a crate that uses them must use SQLx 0.9 too.
+  SQLx 0.9 removed the combined `runtime-tokio-rustls` feature; this crate now enables `runtime-tokio` and `tls-rustls`.
+  No code change was needed; all 719 tests pass.
+- SQLx 0.9 escapes values passed to `PgConnectOptions::options()` and unescapes `.pgpass` passwords. This crate sets neither.
+
 ## [1.2.1] - 2026-10-06
 
 ### Fixed

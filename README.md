@@ -116,7 +116,7 @@ Settings are deserialized into strongly-typed Rust structs using serde. This mea
 
 ```toml
 [dependencies]
-settings-loader = { version = "1.0", features = ["database", "http", "multi-scope", "editor"] }
+settings-loader = { version = "2.0", features = ["database", "http", "multi-scope", "editor"] }
 ```
 
 ### Available Features
